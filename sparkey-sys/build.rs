@@ -1,29 +1,21 @@
 extern crate gcc;
 
 fn main() {
-    gcc::compile_library("libsparkey.a", &[
-        "sparkey/src/MurmurHash3.c",
-        "sparkey/src/MurmurHash3.h",
-        "sparkey/src/buf.c",
-        "sparkey/src/buf.h",
-        "sparkey/src/endiantools.c",
-        "sparkey/src/endiantools.h",
-        "sparkey/src/hashalgorithms.c",
-        "sparkey/src/hashalgorithms.h",
-        "sparkey/src/hashheader.c",
-        "sparkey/src/hashheader.h",
-        "sparkey/src/hashiter.c",
-        "sparkey/src/hashiter.h",
-        "sparkey/src/hashreader.c",
-        "sparkey/src/hashwriter.c",
-        "sparkey/src/logheader.c",
-        "sparkey/src/logheader.h",
-        "sparkey/src/logreader.c",
-        "sparkey/src/logwriter.c",
-        "sparkey/src/returncodes.c",
-        "sparkey/src/sparkey-internal.h",
-        "sparkey/src/sparkey.h",
-        "sparkey/src/util.c",
-        "sparkey/src/util.h",
-    ]);
+    println!("cargo:rustc-link-lib=snappy");
+    gcc::Config::new()
+        .include("sparkey/src")
+        .file("sparkey/src/MurmurHash3.c")
+        .file("sparkey/src/buf.c")
+        .file("sparkey/src/endiantools.c")
+        .file("sparkey/src/hashalgorithms.c")
+        .file("sparkey/src/hashheader.c")
+        .file("sparkey/src/hashiter.c")
+        .file("sparkey/src/hashreader.c")
+        .file("sparkey/src/hashwriter.c")
+        .file("sparkey/src/logheader.c")
+        .file("sparkey/src/logreader.c")
+        .file("sparkey/src/logwriter.c")
+        .file("sparkey/src/returncodes.c")
+        .file("sparkey/src/util.c")
+        .compile("libsparkey.a");
 }

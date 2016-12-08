@@ -1,0 +1,19 @@
+[package]
+authors = ["David Flemström <dflemstr@spotify.com>"]
+description = "High-level bindings to Sparkey, a simple constant key/value storage library, for read-heavy systems with infrequent large bulk inserts."
+homepage = "https://github.com/dflemstr/sparkey-rs"
+license = "Apache-2.0"
+name = "sparkey"
+repository = "https://github.com/dflemstr/sparkey-rs"
+version = "0.1.0"
+
+[dependencies]
+error-chain = "0.7.1"
+libc = "0.2.18"
+
+[dependencies.sparkey-sys]
+path = "sparkey-sys"
+version = "0.1.0"
+
+[dev-dependencies]
+tempdir = "0.3.5"
