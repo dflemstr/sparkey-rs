@@ -4,6 +4,7 @@ fn main() {
     println!("cargo:rustc-link-lib=snappy");
     gcc::Config::new()
         .include("sparkey/src")
+        .flag("-std=c99")
         .file("sparkey/src/MurmurHash3.c")
         .file("sparkey/src/buf.c")
         .file("sparkey/src/endiantools.c")
