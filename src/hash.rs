@@ -97,12 +97,12 @@ impl Reader {
         Ok(result)
     }
 
-    pub fn iter(&self) -> error::Result<log::Iter> {
+    pub fn entries(&self) -> error::Result<log::Entries> {
         let mut raw = ptr::null_mut();
 
         util::handle(unsafe { logiter_create(&mut raw, self.1.as_raw()) })?;
 
-        Ok(unsafe { log::Iter::from_raw(raw, &self.1, Some(self.0)) })
+        Ok(unsafe { log::Entries::from_raw(raw, &self.1, Some(self.0)) })
     }
 
     pub fn keys(&self) -> error::Result<log::Keys> {

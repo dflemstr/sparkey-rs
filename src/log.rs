@@ -27,7 +27,7 @@ pub struct Entry {
     pub value: Vec<u8>,
 }
 
-pub struct Iter<'a>(*mut logiter, &'a Reader, Option<*mut hashreader>);
+pub struct Entries<'a>(*mut logiter, &'a Reader, Option<*mut hashreader>);
 
 pub struct Keys<'a>(*mut logiter, &'a Reader, Option<*mut hashreader>);
 
@@ -173,12 +173,12 @@ impl Reader {
         }
     }
 
-    pub fn iter(&self) -> error::Result<Iter> {
+    pub fn entries(&self) -> error::Result<Entries> {
         let mut raw = ptr::null_mut();
 
         util::handle(unsafe { logiter_create(&mut raw, self.0) })?;
 
-        Ok(Iter(raw, self, None))
+        Ok(Entries(raw, self, None))
     }
 
     pub fn keys(&self) -> error::Result<Keys> {
@@ -210,12 +210,12 @@ unsafe impl Send for Reader {}
 
 unsafe impl Sync for Reader {}
 
-impl<'a> Iter<'a> {
+impl<'a> Entries<'a> {
     pub unsafe fn from_raw(raw: *mut logiter,
                            reader: &'a Reader,
                            hash: Option<*mut hashreader>)
-                           -> Iter<'a> {
-        Iter(raw, reader, hash)
+                           -> Entries<'a> {
+        Entries(raw, reader, hash)
     }
 
     pub fn as_raw(&self) -> *mut logiter {
@@ -253,7 +253,7 @@ impl<'a> Iter<'a> {
     }
 }
 
-impl<'a> Iterator for Iter<'a> {
+impl<'a> Iterator for Entries<'a> {
     type Item = error::Result<Entry>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -261,13 +261,13 @@ impl<'a> Iterator for Iter<'a> {
     }
 }
 
-impl<'a> Drop for Iter<'a> {
+impl<'a> Drop for Entries<'a> {
     fn drop(&mut self) {
         unsafe { logiter_close(&mut self.0) }
     }
 }
 
-unsafe impl<'a> Send for Iter<'a> {}
+unsafe impl<'a> Send for Entries<'a> {}
 
 impl<'a> Keys<'a> {
     pub unsafe fn from_raw(raw: *mut logiter,
