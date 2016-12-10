@@ -5,7 +5,7 @@ homepage = "https://github.com/dflemstr/sparkey-rs"
 license = "Apache-2.0"
 name = "sparkey-sys"
 repository = "https://github.com/dflemstr/sparkey-rs"
-version = "0.1.0"
+version = "0.1.1"
 build = "build.rs"
 
 [build-dependencies]
