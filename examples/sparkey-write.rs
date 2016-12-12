@@ -15,8 +15,7 @@ fn main() {
 
     let mut writer =
         sparkey::log::Writer::create(path::Path::new(&log),
-                                     sparkey::log::CompressionType::Snappy,
-                                     1024)
+                                     sparkey::log::CompressionType::Snappy(1024))
             .expect("Can't create log file");
 
     let stdin = io::stdin();

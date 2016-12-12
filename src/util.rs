@@ -1,79 +1,5 @@
-use std::borrow;
-use std::cmp;
+use std::io;
 use std::result;
-
-use error;
-
-pub trait Chunks {
-    fn take_chunk(&mut self, max_size: usize) -> error::Result<&[u8]>;
-
-    fn skip_chunk(&mut self, max_size: usize) -> error::Result<()>;
-
-    fn fill_chunks<'a>(&'a mut self,
-                       size: usize)
-                       -> error::Result<borrow::Cow<'a, [u8]>> {
-        let mut result;
-        {
-            let first_chunk = self.take_chunk(size)?;
-            if (*first_chunk).len() == size {
-                // Because of
-                // https://github.com/rust-lang/rust/issues/30223 and
-                // https://github.com/rust-lang/rfcs/issues/811
-                unsafe {
-                    return Ok(borrow::Cow::from(&*(first_chunk as *const [u8])));
-                }
-            } else {
-                result = Vec::with_capacity(size);
-                result.extend_from_slice(&*first_chunk);
-            }
-        }
-
-        while result.len() < size {
-            let next_chunk = self.take_chunk(size - result.len())?;
-            result.extend_from_slice(next_chunk);
-        }
-
-        Ok(borrow::Cow::from(result))
-    }
-}
-
-pub struct SliceChunks<'a>(&'a [u8]);
-
-impl<'a, C> Chunks for &'a mut C
-    where C: Chunks
-{
-    fn take_chunk<'b>(&'b mut self,
-                      max_size: usize)
-                      -> error::Result<&'b [u8]> {
-        (*self).take_chunk(max_size)
-    }
-
-    fn skip_chunk(&mut self, size: usize) -> error::Result<()> {
-        (*self).skip_chunk(size)
-    }
-}
-
-impl<'a> SliceChunks<'a> {
-    pub fn new(slice: &[u8]) -> SliceChunks {
-        SliceChunks(slice)
-    }
-}
-
-impl<'a> Chunks for SliceChunks<'a> {
-    fn take_chunk<'b>(&'b mut self,
-                      max_size: usize)
-                      -> error::Result<&'b [u8]> {
-        let split = cmp::min(max_size, self.0.len());
-        let (result, new_slice) = self.0.split_at(split);
-        self.0 = new_slice;
-        Ok(result)
-    }
-
-    fn skip_chunk(&mut self, size: usize) -> error::Result<()> {
-        self.0 = &self.0[size..];
-        Ok(())
-    }
-}
 
 pub fn flip_option<A, E>(option: result::Result<Option<A>, E>)
                          -> Option<result::Result<A, E>> {
@@ -84,44 +10,47 @@ pub fn flip_option<A, E>(option: result::Result<Option<A>, E>)
     }
 }
 
-pub fn read_vlq<C>(mut chunks: C) -> error::Result<(u64, usize)>
-    where C: Chunks
+pub fn read_vlq<R>(mut read: R) -> io::Result<u64>
+    where R: io::Read
 {
     let mut result = 0u64;
 
     const MAX_LEN: usize = 10;
 
     for i in 0..MAX_LEN {
-        let chunk = chunks.take_chunk(1)?;
-        let byte = *chunk.first()
-            .ok_or_else(|| error::Error::from(error::ErrorKind::VlqUnderrun))?;
+        let mut bytes = [0];
+        read.read_exact(&mut bytes)?;
 
+        let byte = bytes[0];
         let value = byte & 0b01111111u8;
 
         result = result | ((value as u64) << (i * 7));
 
         if byte == value {
-            return Ok((result, i + 1));
+            return Ok(result);
         }
     }
 
-    bail!(error::ErrorKind::VlqOverflow);
+    bail!(io::Error::new(io::ErrorKind::InvalidData, "VLQ overflow"));
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
 
-    use error;
+    use std::io;
 
-    fn read_vlq_slice(slice: &[u8]) -> error::Result<(u64, usize)> {
-        read_vlq(SliceChunks::new(slice))
+    fn read_vlq_slice(slice: &[u8]) -> io::Result<(u64, usize)> {
+        let mut cursor = io::Cursor::new(slice);
+        let value = read_vlq(&mut cursor)?;
+        let length = cursor.position() as usize;
+        Ok((value, length))
     }
 
     #[test]
-    fn read_vlq_underflow() {
+    fn read_vlq_underrun() {
         let err = read_vlq_slice(&[0b10000000]).unwrap_err();
-        assert_matches!(err.kind(), &error::ErrorKind::VlqUnderrun);
+        assert_matches!(err.kind(), io::ErrorKind::UnexpectedEof);
     }
 
     #[test]
@@ -131,7 +60,7 @@ mod test {
                                    0b10000000, 0b10000000, 0b10000000,
                                    0b10000000])
             .unwrap_err();
-        assert_matches!(err.kind(), &error::ErrorKind::VlqOverflow);
+        assert_matches!(err.kind(), io::ErrorKind::InvalidData);
     }
 
     #[test]
