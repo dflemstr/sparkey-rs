@@ -259,6 +259,18 @@ impl Reader {
         self.header.compression_type
     }
 
+    pub fn num_puts(&self) -> u64 {
+        self.header.num_puts
+    }
+
+    pub fn num_deletes(&self) -> u64 {
+        self.header.num_deletes
+    }
+
+    pub fn num_entries(&self) -> u64 {
+        self.num_puts() + self.num_deletes()
+    }
+
     fn blocks(&self) -> Blocks {
         Blocks::new(self)
     }
