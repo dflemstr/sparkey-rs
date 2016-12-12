@@ -132,6 +132,7 @@ impl<'a> Skip for BlockChunks<'a> {
                 }
             };
             size -= slice_len;
+            self.block_offset += slice_len;
         }
         Ok(())
     }
