@@ -1,142 +1,79 @@
-use std::ffi;
-use std::io;
-use std::os;
-use std::path;
+use std::borrow;
+use std::cmp;
 use std::result;
-
-use libc;
-use sparkey_sys::*;
 
 use error;
 
-pub fn path_to_cstring<P>(path: P) -> error::Result<ffi::CString>
-    where P: AsRef<path::Path>
+pub trait Chunks {
+    fn take_chunk(&mut self, max_size: usize) -> error::Result<&[u8]>;
+
+    fn skip_chunk(&mut self, max_size: usize) -> error::Result<()>;
+
+    fn fill_chunks<'a>(&'a mut self,
+                       size: usize)
+                       -> error::Result<borrow::Cow<'a, [u8]>> {
+        let mut result;
+        {
+            let first_chunk = self.take_chunk(size)?;
+            if (*first_chunk).len() == size {
+                // Because of
+                // https://github.com/rust-lang/rust/issues/30223 and
+                // https://github.com/rust-lang/rfcs/issues/811
+                unsafe {
+                    return Ok(borrow::Cow::from(&*(first_chunk as *const [u8])));
+                }
+            } else {
+                result = Vec::with_capacity(size);
+                result.extend_from_slice(&*first_chunk);
+            }
+        }
+
+        while result.len() < size {
+            let next_chunk = self.take_chunk(size - result.len())?;
+            result.extend_from_slice(next_chunk);
+        }
+
+        Ok(borrow::Cow::from(result))
+    }
+}
+
+pub struct SliceChunks<'a>(&'a [u8]);
+
+impl<'a, C> Chunks for &'a mut C
+    where C: Chunks
 {
-    use error::{Error, ErrorKind};
-    let path = path.as_ref();
-    let path_str = path.to_str()
-        .ok_or(Error::from(ErrorKind::PathNotUTF8(path.to_path_buf())))?;
+    fn take_chunk<'b>(&'b mut self,
+                      max_size: usize)
+                      -> error::Result<&'b [u8]> {
+        (*self).take_chunk(max_size)
+    }
 
-    match ffi::CString::new(path_str) {
-        Ok(s) => Ok(s),
-        Err(e) => {
-            Err(error::ErrorKind::PathContainsNul(path.to_path_buf(),
-                                                  e.nul_position())
-                .into())
-        }
+    fn skip_chunk(&mut self, size: usize) -> error::Result<()> {
+        (*self).skip_chunk(size)
     }
 }
 
-pub fn handle(returncode: returncode) -> error::Result<()> {
-    use sparkey_sys::returncode::*;
-    use error::ErrorKind::*;
-    use error::ResultExt;
-
-    fn err(kind: error::ErrorKind) -> error::Error {
-        kind.into()
-    }
-
-    fn raw(raw: os::raw::c_int) -> error::Error {
-        io::Error::from_raw_os_error(raw).into()
-    }
-
-    match returncode {
-        SUCCESS => Ok(()),
-
-        INTERNAL_ERROR => Err(err(InternalError)),
-
-        FILE_NOT_FOUND => {
-            Err(raw(libc::ENOENT)).chain_err(|| err(FileNotFound))
-        }
-        PERMISSION_DENIED => {
-            Err(raw(libc::EACCES)).chain_err(|| err(PermissionDenied))
-        }
-        TOO_MANY_OPEN_FILES => {
-            Err(raw(libc::ENFILE)).chain_err(|| err(TooManyOpenFiles))
-        }
-        FILE_TOO_LARGE => {
-            Err(raw(libc::EOVERFLOW)).chain_err(|| err(FileTooLarge))
-        }
-        FILE_ALREADY_EXISTS => {
-            Err(raw(libc::EEXIST)).chain_err(|| err(FileAlreadyExists))
-        }
-        FILE_BUSY => Err(raw(libc::EBUSY)).chain_err(|| err(FileBusy)),
-        FILE_IS_DIRECTORY => {
-            Err(raw(libc::EISDIR)).chain_err(|| err(FileIsDirectory))
-        }
-        FILE_SIZE_EXCEEDED => {
-            Err(raw(libc::EFBIG)).chain_err(|| err(FileSizeExceeded))
-        }
-        FILE_CLOSED => Err(raw(libc::EBADF)).chain_err(|| err(FileClosed)),
-        OUT_OF_DISK => Err(raw(libc::ENOSPC)).chain_err(|| err(OutOfDisk)),
-        UNEXPECTED_EOF => {
-            Err(raw(libc::ENOENT)).chain_err(|| err(FileNotFound))
-        }
-        MMAP_FAILED => Err(err(MmapFailed)),
-
-        WRONG_LOG_MAGIC_NUMBER => Err(err(WrongLogMagicNumber)),
-        WRONG_LOG_MAJOR_VERSION => Err(err(WrongLogMajorVersion)),
-        UNSUPPORTED_LOG_MINOR_VERSION => Err(err(UnsupportedLogMinorVersion)),
-        LOG_TOO_SMALL => Err(err(LogTooSmall)),
-        LOG_CLOSED => Err(err(LogClosed)),
-        LOG_ITERATOR_INACTIVE => Err(err(LogIteratorInactive)),
-        LOG_ITERATOR_MISMATCH => Err(err(LogIteratorMismatch)),
-        LOG_ITERATOR_CLOSED => Err(err(LogIteratorClosed)),
-        LOG_HEADER_CORRUPT => Err(err(LogHeaderCorrupt)),
-        INVALID_COMPRESSION_BLOCK_SIZE => Err(err(InvalidCompressionBlockSize)),
-        INVALID_COMPRESSION_TYPE => Err(err(InvalidCompressionType)),
-
-        WRONG_HASH_MAGIC_NUMBER => Err(err(WrongHashMagicNumber)),
-        WRONG_HASH_MAJOR_VERSION => Err(err(WrongHashMajorVersion)),
-        UNSUPPORTED_HASH_MINOR_VERSION => Err(err(UnsupportedHashMinorVersion)),
-        HASH_TOO_SMALL => Err(err(HashTooSmall)),
-        HASH_CLOSED => Err(err(HashClosed)),
-        FILE_IDENTIFIER_MISMATCH => Err(err(FileIdentifierMismatch)),
-        HASH_HEADER_CORRUPT => Err(err(HashHeaderCorrupt)),
-        HASH_SIZE_INVALID => Err(err(HashSizeInvalid)),
+impl<'a> SliceChunks<'a> {
+    pub fn new(slice: &[u8]) -> SliceChunks {
+        SliceChunks(slice)
     }
 }
 
-pub fn read_key(iter: *mut logiter,
-                reader: *mut logreader)
-                -> error::Result<Vec<u8>> {
-    let expected_len = unsafe { logiter_keylen(iter) };
-    let mut actual_len = 0;
-    let mut buf = Vec::with_capacity(expected_len as usize);
-
-    unsafe {
-        handle(logiter_fill_key(iter,
-                                reader,
-                                expected_len,
-                                buf.as_mut_ptr(),
-                                &mut actual_len))?;
-        assert_eq!(expected_len, actual_len);
-        buf.set_len(actual_len as usize);
+impl<'a> Chunks for SliceChunks<'a> {
+    fn take_chunk<'b>(&'b mut self,
+                      max_size: usize)
+                      -> error::Result<&'b [u8]> {
+        let split = cmp::min(max_size, self.0.len());
+        let (result, new_slice) = self.0.split_at(split);
+        self.0 = new_slice;
+        Ok(result)
     }
 
-    Ok(buf)
-}
-
-pub fn read_value(iter: *mut logiter,
-                  reader: *mut logreader)
-                  -> error::Result<Vec<u8>> {
-    let expected_len = unsafe { logiter_valuelen(iter) };
-    let mut actual_len = 0;
-    let mut buf = Vec::with_capacity(expected_len as usize);
-
-    unsafe {
-        handle(logiter_fill_value(iter,
-                                  reader,
-                                  expected_len,
-                                  buf.as_mut_ptr(),
-                                  &mut actual_len))?;
-        assert_eq!(expected_len, actual_len);
-        buf.set_len(actual_len as usize);
+    fn skip_chunk(&mut self, size: usize) -> error::Result<()> {
+        self.0 = &self.0[size..];
+        Ok(())
     }
-
-    Ok(buf)
 }
-
 
 pub fn flip_option<A, E>(option: result::Result<Option<A>, E>)
                          -> Option<result::Result<A, E>> {
@@ -144,5 +81,118 @@ pub fn flip_option<A, E>(option: result::Result<Option<A>, E>)
         Ok(None) => None,
         Ok(Some(r)) => Some(Ok(r)),
         Err(e) => Some(Err(e)),
+    }
+}
+
+pub fn read_vlq<C>(mut chunks: C) -> error::Result<(u64, usize)>
+    where C: Chunks
+{
+    let mut result = 0u64;
+
+    const MAX_LEN: usize = 10;
+
+    for i in 0..MAX_LEN {
+        let chunk = chunks.take_chunk(1)?;
+        let byte = *chunk.first()
+            .ok_or_else(|| error::Error::from(error::ErrorKind::VlqUnderrun))?;
+
+        let value = byte & 0b01111111u8;
+
+        result = result | ((value as u64) << (i * 7));
+
+        if byte == value {
+            return Ok((result, i + 1));
+        }
+    }
+
+    bail!(error::ErrorKind::VlqOverflow);
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use error;
+
+    fn read_vlq_slice(slice: &[u8]) -> error::Result<(u64, usize)> {
+        read_vlq(SliceChunks::new(slice))
+    }
+
+    #[test]
+    fn read_vlq_underflow() {
+        let err = read_vlq_slice(&[0b10000000]).unwrap_err();
+        assert_matches!(err.kind(), &error::ErrorKind::VlqUnderrun);
+    }
+
+    #[test]
+    fn read_vlq_slice_overflow() {
+        let err = read_vlq_slice(&[0b10000000, 0b10000000, 0b10000000,
+                                   0b10000000, 0b10000000, 0b10000000,
+                                   0b10000000, 0b10000000, 0b10000000,
+                                   0b10000000])
+            .unwrap_err();
+        assert_matches!(err.kind(), &error::ErrorKind::VlqOverflow);
+    }
+
+    #[test]
+    fn read_vlq_slice_1_min() {
+        let (value, len) = read_vlq_slice(&[0b00000000]).unwrap();
+        assert_eq!(0, value);
+        assert_eq!(1, len);
+    }
+
+    #[test]
+    fn read_vlq_slice_1_max() {
+        let (value, len) = read_vlq_slice(&[0b01111111]).unwrap();
+        assert_eq!(127, value);
+        assert_eq!(1, len);
+    }
+
+    #[test]
+    fn read_vlq_slice_2_min() {
+        let (value, len) = read_vlq_slice(&[0b10000000, 0b00000001]).unwrap();
+        assert_eq!(128, value);
+        assert_eq!(2, len);
+    }
+
+    #[test]
+    fn read_vlq_slice_2_max() {
+        let (value, len) = read_vlq_slice(&[0b11111111, 0b01111111]).unwrap();
+        assert_eq!(16383, value);
+        assert_eq!(2, len);
+    }
+
+    #[test]
+    fn read_vlq_slice_3_min() {
+        let (value, len) =
+            read_vlq_slice(&[0b10000000, 0b10000000, 0b00000001]).unwrap();
+        assert_eq!(16384, value);
+        assert_eq!(3, len);
+    }
+
+    #[test]
+    fn read_vlq_slice_3_max() {
+        let (value, len) =
+            read_vlq_slice(&[0b11111111, 0b11111111, 0b01111111]).unwrap();
+        assert_eq!(2097151, value);
+        assert_eq!(3, len);
+    }
+
+    #[test]
+    fn read_vlq_slice_4_min() {
+        let (value, len) = read_vlq_slice(&[0b10000000, 0b10000000,
+                                            0b10000000, 0b00000001])
+            .unwrap();
+        assert_eq!(2097152, value);
+        assert_eq!(4, len);
+    }
+
+    #[test]
+    fn read_vlq_slice_4_max() {
+        let (value, len) = read_vlq_slice(&[0b11111111, 0b11111111,
+                                            0b11111111, 0b01111111])
+            .unwrap();
+        assert_eq!(268435455, value);
+        assert_eq!(4, len);
     }
 }

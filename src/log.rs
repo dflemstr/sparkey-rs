@@ -1,374 +1,451 @@
+use std::borrow;
+use std::cmp;
+use std::fs;
+use std::io;
 use std::path;
-use std::os;
-use std::ptr;
 
-use sparkey_sys::*;
+use byteorder;
+use memmap;
+use snap;
 
 use error;
+use hash;
 use util;
 
+const MAGIC: u32 = 0x49b39c95;
+const MAJOR_VERSION: u32 = 1;
+const MINOR_VERSION: u32 = 0;
+const HEADER_SIZE: u32 = 84;
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum CompressionType {
     None,
     Snappy,
 }
 
-pub enum EntryType {
-    Put,
-    Delete,
+#[derive(Debug)]
+struct Header {
+    major_version: u32,
+    minor_version: u32,
+    file_identifier: u32,
+    num_puts: u64,
+    num_deletes: u64,
+    data_end: u64,
+    max_key_len: u64,
+    max_value_len: u64,
+    delete_size: u64,
+    compression_type: CompressionType,
+    compression_block_size: u32,
+    put_size: u64,
+    header_size: u32,
+    max_entries_per_block: u32,
 }
 
-pub struct Writer(*mut logwriter);
-
-pub struct Reader(*mut logreader, bool);
-
-pub struct Entry {
-    pub entry_type: EntryType,
-    pub key: Vec<u8>,
-    pub value: Vec<u8>,
+#[derive(Debug)]
+pub struct Writer {
+    header: Header,
+    write: io::BufWriter<fs::File>,
 }
 
-pub struct Entries<'a>(*mut logiter, &'a Reader, Option<*mut hashreader>);
+#[derive(Debug)]
+pub struct Reader {
+    header: Header,
+    map: memmap::Mmap,
+}
 
-pub struct Keys<'a>(*mut logiter, &'a Reader, Option<*mut hashreader>);
+#[derive(Debug)]
+struct Block<'a> {
+    position: usize,
+    data: borrow::Cow<'a, [u8]>,
+}
 
-pub struct Values<'a>(*mut logiter, &'a Reader, Option<*mut hashreader>);
+#[derive(Debug)]
+struct Blocks<'a> {
+    reader: &'a Reader,
+    next_position: usize,
+}
+
+#[derive(Debug)]
+struct BlockChunks<'a> {
+    blocks: Blocks<'a>,
+    current_block: Option<Block<'a>>,
+    block_offset: usize,
+}
+
+#[derive(Debug)]
+pub enum Entry<'a> {
+    Put(borrow::Cow<'a, [u8]>, borrow::Cow<'a, [u8]>),
+    Delete(borrow::Cow<'a, [u8]>),
+}
+
+#[derive(Debug)]
+pub struct Entries<'a> {
+    chunks: BlockChunks<'a>,
+    hash_reader: Option<&'a hash::Reader>,
+}
 
 impl CompressionType {
-    pub fn from_raw(raw: compression_type) -> CompressionType {
-        match raw {
-            compression_type::COMPRESSION_NONE => CompressionType::None,
-            compression_type::COMPRESSION_SNAPPY => CompressionType::Snappy,
-        }
-    }
-
-    pub fn as_raw(&self) -> compression_type {
+    fn read_block<'a>(&self,
+                      data: &'a [u8])
+                      -> error::Result<(borrow::Cow<'a, [u8]>, usize)> {
         match *self {
-            CompressionType::None => compression_type::COMPRESSION_NONE,
-            CompressionType::Snappy => compression_type::COMPRESSION_SNAPPY,
+            CompressionType::None => {
+                let block = borrow::Cow::from(data);
+                let size = block.len();
+                trace!("Read uncompressed block of size {}, stored size {}",
+                       block.len(),
+                       size);
+                Ok((block, size))
+            }
+            CompressionType::Snappy => {
+                let (compressed_size, length) =
+                    util::read_vlq(util::SliceChunks::new(data))?;
+                let data = &data[length..compressed_size as usize + length];
+                let mut decoder = snap::Decoder::new();
+
+                let block = borrow::Cow::from(decoder.decompress_vec(data)?);
+                let size = length + compressed_size as usize;
+                trace!("Read Snappy compressed block of size {}, stored size \
+                        {}",
+                       (&*block as &[u8]).len(),
+                       size);
+                Ok((block, size))
+            }
         }
     }
 }
 
-impl EntryType {
-    pub fn from_raw(raw: entry_type) -> EntryType {
-        match raw {
-            entry_type::ENTRY_PUT => EntryType::Put,
-            entry_type::ENTRY_DELETE => EntryType::Delete,
-        }
-    }
+impl Header {
+    fn load(path: &path::Path) -> error::Result<Header> {
+        use byteorder::ReadBytesExt;
 
-    pub fn as_raw(&self) -> entry_type {
-        match *self {
-            EntryType::Put => entry_type::ENTRY_PUT,
-            EntryType::Delete => entry_type::ENTRY_DELETE,
+        let mut file = fs::File::open(path)?;
+
+        let magic = file.read_u32::<byteorder::LittleEndian>()?;
+        if magic != MAGIC {
+            bail!(error::ErrorKind::WrongLogMagicNumber);
         }
+
+        let major_version = file.read_u32::<byteorder::LittleEndian>()?;
+        if major_version != MAJOR_VERSION {
+            bail!(error::ErrorKind::WrongLogMajorVersion);
+        }
+
+        let minor_version = file.read_u32::<byteorder::LittleEndian>()?;
+        if minor_version > MINOR_VERSION {
+            bail!(error::ErrorKind::UnsupportedLogMinorVersion);
+        }
+
+        let file_identifier = file.read_u32::<byteorder::LittleEndian>()?;
+        let num_puts = file.read_u64::<byteorder::LittleEndian>()?;
+        let num_deletes = file.read_u64::<byteorder::LittleEndian>()?;
+        let data_end = file.read_u64::<byteorder::LittleEndian>()?;
+        let max_key_len = file.read_u64::<byteorder::LittleEndian>()?;
+        let max_value_len = file.read_u64::<byteorder::LittleEndian>()?;
+        let delete_size = file.read_u64::<byteorder::LittleEndian>()?;
+        let compression_type = file.read_u32::<byteorder::LittleEndian>()?;
+        let compression_block_size =
+            file.read_u32::<byteorder::LittleEndian>()?;
+        let put_size = file.read_u64::<byteorder::LittleEndian>()?;
+        let max_entries_per_block = file.read_u32::<byteorder::LittleEndian>()?;
+
+        let compression_type = match compression_type {
+            0 => CompressionType::None,
+            1 => CompressionType::Snappy,
+            _ => bail!(error::ErrorKind::InvalidCompressionType),
+        };
+
+        if data_end < HEADER_SIZE as u64 {
+            bail!(error::ErrorKind::LogHeaderCorrupt);
+        }
+
+        if num_puts > data_end {
+            bail!(error::ErrorKind::LogHeaderCorrupt);
+        }
+
+        if num_deletes > data_end {
+            bail!(error::ErrorKind::LogHeaderCorrupt);
+        }
+
+        let header = Header {
+            major_version: major_version,
+            minor_version: minor_version,
+            file_identifier: file_identifier,
+            num_puts: num_puts,
+            num_deletes: num_deletes,
+            data_end: data_end,
+            max_key_len: max_key_len,
+            max_value_len: max_value_len,
+            delete_size: delete_size,
+            compression_type: compression_type,
+            compression_block_size: compression_block_size,
+            put_size: put_size,
+            header_size: HEADER_SIZE,
+            max_entries_per_block: max_entries_per_block,
+        };
+
+        Ok(header)
     }
 }
 
 impl Writer {
-    pub fn create<P>(path: P,
-                     compression_type: CompressionType,
-                     compression_block_size: u32)
+    pub fn create<P>(_path: P,
+                     _compression_type: CompressionType,
+                     _compression_block_size: u32)
                      -> error::Result<Writer>
         where P: AsRef<path::Path>
     {
-        let mut raw = ptr::null_mut();
-        let path = util::path_to_cstring(path)?;
-
-        util::handle(unsafe {
-            logwriter_create(&mut raw,
-                             path.as_ptr(),
-                             compression_type.as_raw(),
-                             compression_block_size as os::raw::c_int)
-        })?;
-
-        Ok(Writer(raw))
+        unimplemented!()
     }
 
-    pub fn append<P>(path: P) -> error::Result<Writer>
+    pub fn append<P>(_path: P) -> error::Result<Writer>
         where P: AsRef<path::Path>
     {
-        let mut raw = ptr::null_mut();
-        let path = util::path_to_cstring(path)?;
-
-        util::handle(unsafe { logwriter_append(&mut raw, path.as_ptr()) })?;
-
-        Ok(Writer(raw))
+        unimplemented!()
     }
 
-    pub unsafe fn from_raw(raw: *mut logwriter) -> Writer {
-        Writer(raw)
+    pub fn put(&mut self, _key: &[u8], _value: &[u8]) -> error::Result<()> {
+        unimplemented!()
     }
 
-    pub fn as_raw(&self) -> *mut logwriter {
-        self.0
-    }
-
-    pub fn put(&mut self, key: &[u8], value: &[u8]) -> error::Result<()> {
-        util::handle(unsafe {
-            logwriter_put(self.0,
-                          key.len() as u64,
-                          key.as_ptr(),
-                          value.len() as u64,
-                          value.as_ptr())
-        })
-    }
-
-    pub fn delete(&mut self, key: &[u8]) -> error::Result<()> {
-        util::handle(unsafe {
-            logwriter_delete(self.0, key.len() as u64, key.as_ptr())
-        })
+    pub fn delete(&mut self, _key: &[u8]) -> error::Result<()> {
+        unimplemented!()
     }
 
     pub fn flush(&mut self) -> error::Result<()> {
-        util::handle(unsafe {
-            logwriter_flush(self.0)
-        })
+        unimplemented!()
     }
 }
-
-impl Drop for Writer {
-    fn drop(&mut self) {
-        util::handle(unsafe { logwriter_close(&mut self.0) }).unwrap()
-    }
-}
-
-unsafe impl Send for Writer {}
 
 impl Reader {
     pub fn open<P>(path: P) -> error::Result<Reader>
         where P: AsRef<path::Path>
     {
-        let mut raw = ptr::null_mut();
-        let path = util::path_to_cstring(path)?;
+        let path = path.as_ref();
+        let header = Header::load(path)?;
 
-        util::handle(unsafe { logreader_open(&mut raw, path.as_ptr()) })?;
+        let file = fs::File::open(path)?;
+        let prot = memmap::Protection::Read;
+        let len = header.data_end as usize;
+        let map = memmap::Mmap::open_with_offset(&file, prot, 0, len)?;
 
-        Ok(Reader(raw, true))
-    }
+        debug!("Opened log {:?} with header {:?} map {:?}",
+               path,
+               header,
+               map);
 
-    pub unsafe fn from_raw(raw: *mut logreader) -> Reader {
-        Reader(raw, false)
-    }
-
-    pub fn as_raw(&self) -> *mut logreader {
-        self.0
+        Ok(Reader {
+            header: header,
+            map: map,
+        })
     }
 
     pub fn max_key_len(&self) -> u64 {
-        unsafe { logreader_maxkeylen(self.0) }
+        self.header.max_key_len
     }
 
     pub fn max_value_len(&self) -> u64 {
-        unsafe { logreader_maxvaluelen(self.0) }
+        self.header.max_value_len
     }
 
     pub fn compression_block_size(&self) -> u32 {
-        unsafe { logreader_get_compression_blocksize(self.0) as u32 }
+        self.header.compression_block_size
     }
 
     pub fn compression_type(&self) -> CompressionType {
-        unsafe {
-            CompressionType::from_raw(logreader_get_compression_type(self.0))
-        }
+        self.header.compression_type
     }
 
-    pub fn entries(&self) -> error::Result<Entries> {
-        let mut raw = ptr::null_mut();
-
-        util::handle(unsafe { logiter_create(&mut raw, self.0) })?;
-
-        Ok(Entries(raw, self, None))
+    fn blocks(&self) -> Blocks {
+        Blocks::new(self)
     }
 
-    pub fn keys(&self) -> error::Result<Keys> {
-        let mut raw = ptr::null_mut();
-
-        util::handle(unsafe { logiter_create(&mut raw, self.0) })?;
-
-        Ok(Keys(raw, self, None))
+    fn block_chunks(&self) -> BlockChunks {
+        BlockChunks::new(self.blocks())
     }
 
-    pub fn values(&self) -> error::Result<Values> {
-        let mut raw = ptr::null_mut();
+    pub fn entries(&self) -> Entries {
+        Entries::new(self.block_chunks())
+    }
 
-        util::handle(unsafe { logiter_create(&mut raw, self.0) })?;
-
-        Ok(Values(raw, self, None))
+    pub unsafe fn entries_at(&self, position: usize) -> Entries {
+        Entries::new(BlockChunks::new(Blocks::new_at(self, position)))
     }
 }
 
-impl Drop for Reader {
-    fn drop(&mut self) {
-        if self.1 {
-            unsafe { logreader_close(&mut self.0) }
+impl<'a> Blocks<'a> {
+    fn new(reader: &Reader) -> Blocks {
+        Blocks {
+            reader: reader,
+            next_position: reader.header.header_size as usize,
+        }
+    }
+
+    fn new_at(reader: &Reader, next_position: usize) -> Blocks {
+        Blocks {
+            reader: reader,
+            next_position: next_position,
+        }
+    }
+
+    fn try_next(&mut self) -> error::Result<Option<Block<'a>>> {
+        let position = self.next_position;
+        if position >= self.reader.header.data_end as usize {
+            Ok(None)
+        } else {
+            let data = unsafe { self.reader.map.as_slice() };
+            let compression_type = self.reader
+                .header
+                .compression_type;
+            trace!("Loading new block at {} with compression type {:?}",
+                   position,
+                   compression_type);
+
+            let (block, size) = compression_type.read_block(&data[position..])?;
+
+            self.next_position += size;
+
+            Ok(Some(Block {
+                position: position,
+                data: block,
+            }))
         }
     }
 }
 
-unsafe impl Send for Reader {}
+impl<'a> Iterator for Blocks<'a> {
+    type Item = error::Result<Block<'a>>;
 
-unsafe impl Sync for Reader {}
+    fn next(&mut self) -> Option<Self::Item> {
+        util::flip_option(self.try_next())
+    }
+}
+
+impl<'a> BlockChunks<'a> {
+    fn new(blocks: Blocks<'a>) -> BlockChunks {
+        BlockChunks {
+            blocks: blocks,
+            current_block: None,
+            block_offset: 0,
+        }
+    }
+}
+
+impl<'a> util::Chunks for BlockChunks<'a> {
+    fn take_chunk<'b>(&'b mut self,
+                      max_size: usize)
+                      -> error::Result<&'b [u8]> {
+        let slice = match self.current_block {
+            Some(ref block) if self.block_offset < block.data.len() => {
+                &block.data[self.block_offset..]
+            }
+            _ => {
+                self.block_offset = 0;
+                self.current_block = self.blocks.try_next()?;
+                if let Some(ref block) = self.current_block {
+                    &block.data
+                } else {
+                    return Ok(&[]);
+                }
+            }
+        };
+        let result_size = cmp::min(max_size, slice.len());
+        self.block_offset += result_size;
+        Ok(&slice[..result_size])
+    }
+
+    fn skip_chunk(&mut self, mut size: usize) -> error::Result<()> {
+        while size > 0 {
+            let slice_len = match self.current_block {
+                Some(ref block) if self.block_offset < block.data.len() => {
+                    block.data[self.block_offset..].len()
+                }
+                _ => {
+                    self.block_offset = 0;
+                    self.current_block = self.blocks.try_next()?;
+                    if let Some(ref block) = self.current_block {
+                        block.data.len()
+                    } else {
+                        bail!(error::ErrorKind::LogTooSmall)
+                    }
+                }
+            };
+            size -= slice_len;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> Entry<'a> {
+    pub fn key(&self) -> &borrow::Cow<[u8]> {
+        match *self {
+            Entry::Put(ref k, _) => k,
+            Entry::Delete(ref k) => k,
+        }
+    }
+
+    pub fn value(&self) -> &borrow::Cow<[u8]> {
+        match *self {
+            Entry::Put(_, ref v) => v,
+            Entry::Delete(_) => panic!("A delete entry has no value"),
+        }
+    }
+}
 
 impl<'a> Entries<'a> {
-    pub unsafe fn from_raw(raw: *mut logiter,
-                           reader: &'a Reader,
-                           hash: Option<*mut hashreader>)
-                           -> Entries<'a> {
-        Entries(raw, reader, hash)
+    fn new(chunks: BlockChunks<'a>) -> Entries<'a> {
+        Entries {
+            chunks: chunks,
+            hash_reader: None,
+        }
     }
 
-    pub fn as_raw(&self) -> *mut logiter {
-        self.0
-    }
+    pub fn try_next<'b>(&'b mut self) -> error::Result<Option<Entry<'b>>> {
+        use util::Chunks;
 
-    pub fn skip(&mut self, count: u32) -> error::Result<()> {
-        util::handle(unsafe {
-            logiter_skip(self.0, (self.1).0, count as os::raw::c_int)
-        })
-    }
+        let (a, _) = util::read_vlq(&mut self.chunks)?;
+        let a = a as usize;
+        let (b, _) = util::read_vlq(&mut self.chunks)?;
+        let b = b as usize;
 
-    fn try_next(&mut self) -> error::Result<Option<Entry>> {
-        if let Some(hash) = self.2 {
-            util::handle(unsafe { logiter_hashnext(self.0, hash) })?;
+        let entry = if a == 0 {
+            let key = self.chunks.fill_chunks(b)?;
+            Entry::Delete(key)
         } else {
-            util::handle(unsafe { logiter_next(self.0, (self.1).0) })?;
-        }
+            let (key, value) = match self.chunks.fill_chunks(a + b - 1)? {
+                borrow::Cow::Owned(mut k) => {
+                    let v = k.split_off(a - 1);
+                    (borrow::Cow::from(k), borrow::Cow::from(v))
+                }
+                borrow::Cow::Borrowed(entry) => {
+                    let (k, v) = entry.split_at(a - 1);
+                    (borrow::Cow::from(k), borrow::Cow::from(v))
+                }
+            };
+            Entry::Put(key, value)
+        };
 
-        match unsafe { logiter_state(self.0) } {
-            iter_state::ITER_ACTIVE => {
-                let entry_type =
-                    EntryType::from_raw(unsafe { logiter_type(self.0) });
-                let key = util::read_key(self.0, (self.1).0)?;
-                let value = util::read_value(self.0, (self.1).0)?;
-
-                Ok(Some(Entry {
-                    entry_type: entry_type,
-                    key: key,
-                    value: value,
-                }))
-            }
-            _ => Ok(None),
-        }
+        Ok(Some(entry))
     }
-}
 
-impl<'a> Iterator for Entries<'a> {
-    type Item = error::Result<Entry>;
+    pub fn skip_next(&mut self) -> error::Result<()> {
+        use util::Chunks;
 
-    fn next(&mut self) -> Option<Self::Item> {
+        let (a, _) = util::read_vlq(&mut self.chunks)?;
+        let a = a as usize;
+        let (b, _) = util::read_vlq(&mut self.chunks)?;
+        let b = b as usize;
+
+        if a == 0 {
+            self.chunks.skip_chunk(b)?;
+        } else {
+            self.chunks.skip_chunk(a + b - 1)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn next<'b>(&'b mut self) -> Option<error::Result<Entry<'b>>> {
         util::flip_option(self.try_next())
     }
 }
-
-impl<'a> Drop for Entries<'a> {
-    fn drop(&mut self) {
-        unsafe { logiter_close(&mut self.0) }
-    }
-}
-
-unsafe impl<'a> Send for Entries<'a> {}
-
-impl<'a> Keys<'a> {
-    pub unsafe fn from_raw(raw: *mut logiter,
-                           reader: &'a Reader,
-                           hash: Option<*mut hashreader>)
-                           -> Keys<'a> {
-        Keys(raw, reader, hash)
-    }
-
-    pub fn as_raw(&self) -> *mut logiter {
-        self.0
-    }
-
-    pub fn skip(&mut self, count: u32) -> error::Result<()> {
-        util::handle(unsafe {
-            logiter_skip(self.0, (self.1).0, count as os::raw::c_int)
-        })
-    }
-
-    fn try_next(&mut self) -> error::Result<Option<Vec<u8>>> {
-        if let Some(hash) = self.2 {
-            util::handle(unsafe { logiter_hashnext(self.0, hash) })?;
-        } else {
-            util::handle(unsafe { logiter_next(self.0, (self.1).0) })?;
-        }
-
-        match unsafe { logiter_state(self.0) } {
-            iter_state::ITER_ACTIVE => {
-                let key = util::read_key(self.0, (self.1).0)?;
-
-                Ok(Some(key))
-            }
-            _ => Ok(None),
-        }
-    }
-}
-
-impl<'a> Iterator for Keys<'a> {
-    type Item = error::Result<Vec<u8>>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        util::flip_option(self.try_next())
-    }
-}
-
-impl<'a> Drop for Keys<'a> {
-    fn drop(&mut self) {
-        unsafe { logiter_close(&mut self.0) }
-    }
-}
-
-unsafe impl<'a> Send for Keys<'a> {}
-
-impl<'a> Values<'a> {
-    pub unsafe fn from_raw(raw: *mut logiter,
-                           reader: &'a Reader,
-                           hash: Option<*mut hashreader>)
-                           -> Values<'a> {
-        Values(raw, reader, hash)
-    }
-
-    pub fn as_raw(&self) -> *mut logiter {
-        self.0
-    }
-
-    pub fn skip(&mut self, count: u32) -> error::Result<()> {
-        util::handle(unsafe {
-            logiter_skip(self.0, (self.1).0, count as os::raw::c_int)
-        })
-    }
-
-    fn try_next(&mut self) -> error::Result<Option<Vec<u8>>> {
-        if let Some(hash) = self.2 {
-            util::handle(unsafe { logiter_hashnext(self.0, hash) })?;
-        } else {
-            util::handle(unsafe { logiter_next(self.0, (self.1).0) })?;
-        }
-
-        match unsafe { logiter_state(self.0) } {
-            iter_state::ITER_ACTIVE => {
-                let value = util::read_value(self.0, (self.1).0)?;
-
-                Ok(Some(value))
-            }
-            _ => Ok(None),
-        }
-    }
-}
-
-impl<'a> Iterator for Values<'a> {
-    type Item = error::Result<Vec<u8>>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        util::flip_option(self.try_next())
-    }
-}
-
-impl<'a> Drop for Values<'a> {
-    fn drop(&mut self) {
-        unsafe { logiter_close(&mut self.0) }
-    }
-}
-
-unsafe impl<'a> Send for Values<'a> {}

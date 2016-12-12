@@ -8,12 +8,14 @@ repository = "https://github.com/dflemstr/sparkey-rs"
 version = "0.1.0"
 
 [dependencies]
+byteorder = "0.5.3"
 error-chain = "0.7.1"
-libc = "0.2.18"
-
-[dependencies.sparkey-sys]
-path = "sparkey-sys"
-version = "0.1.0"
+log = "0.3.6"
+memmap = "0.5.0"
+murmur3 = "0.3.0"
+snap = "0.1.2"
 
 [dev-dependencies]
+assert_matches = "1.0.1"
+env_logger = "0.3.5"
 tempdir = "0.3.5"

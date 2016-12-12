@@ -37,5 +37,6 @@ fn main() {
 
     writer.flush().unwrap();
 
-    sparkey::hash::Writer::write(index, log, None).expect("Can't create index file");
+    sparkey::hash::Writer::write(index, log, None)
+        .expect("Can't create index file");
 }

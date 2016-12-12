@@ -1,35 +1,25 @@
 use std::io;
 use std::path;
 
+use snap;
+
 error_chain! {
     foreign_links {
         IO(io::Error);
+        Snappy(snap::Error);
     }
 
     errors {
         PathNotUTF8(path: path::PathBuf) {}
         PathContainsNul(path: path::PathBuf, position: usize) {}
 
-        InternalError {}
-
-        FileNotFound {}
-        PermissionDenied {}
-        TooManyOpenFiles {}
-        FileTooLarge {}
-        FileAlreadyExists {}
-        FileBusy {}
-        FileIsDirectory {}
-        FileSizeExceeded {}
-        FileClosed {}
-        OutOfDisk {}
-        UnexpectedEof {}
-        MmapFailed {}
+        VlqOverflow {}
+        VlqUnderrun {}
 
         WrongLogMagicNumber {}
         WrongLogMajorVersion {}
         UnsupportedLogMinorVersion {}
         LogTooSmall {}
-        LogClosed {}
         LogIteratorInactive {}
         LogIteratorMismatch {}
         LogIteratorClosed {}
@@ -41,9 +31,9 @@ error_chain! {
         WrongHashMajorVersion {}
         UnsupportedHashMinorVersion {}
         HashTooSmall {}
-        HashClosed {}
         FileIdentifierMismatch {}
         HashHeaderCorrupt {}
         HashSizeInvalid {}
+        AddressSizeInvalid {}
     }
 }
