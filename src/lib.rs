@@ -46,7 +46,7 @@ mod test {
         }
         hash::Writer::write(&hash, &log, None).unwrap();
 
-        let mut reader = hash::Reader::open(&hash, &log).unwrap();
+        let reader = hash::Reader::open(&hash, &log).unwrap();
 
         assert_eq!(Some(vec![2u8, 3, 4, 5]), reader.get(&[1]).unwrap());
         assert_eq!(Some(vec![7u8, 8, 9, 10]), reader.get(&[6]).unwrap());
@@ -68,7 +68,7 @@ mod test {
         }
         hash::Writer::write(&hash, &log, None).unwrap();
 
-        let mut reader = hash::Reader::open(&hash, &log).unwrap();
+        let reader = hash::Reader::open(&hash, &log).unwrap();
 
         assert_eq!(Some(vec![2u8, 3, 4, 5]), reader.get(&[1]).unwrap());
         assert_eq!(Some(vec![7u8, 8, 9, 10]), reader.get(&[6]).unwrap());
@@ -86,7 +86,7 @@ mod test {
         let csv = dir.join("small.csv");
         let csv_file = fs::File::open(csv).unwrap();
 
-        let mut reader = hash::Reader::open(&hash, &log).unwrap();
+        let reader = hash::Reader::open(&hash, &log).unwrap();
 
         for line in io::BufReader::new(csv_file).lines() {
             let line = line.unwrap();
@@ -163,9 +163,9 @@ mod test {
 
         hash::Writer::write(&actual_hash, &actual_log, None).unwrap();
 
-        let mut expected_reader =
+        let expected_reader =
             hash::Reader::open(&expected_hash, &expected_log).unwrap();
-        let mut actual_reader = hash::Reader::open(&actual_hash, &actual_log)
+        let actual_reader = hash::Reader::open(&actual_hash, &actual_log)
             .unwrap();
 
         {

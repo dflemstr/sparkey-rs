@@ -207,7 +207,7 @@ impl Reader {
     }
 
     // TODO: this is very stop-gap for now
-    pub fn get(&mut self, key: &[u8]) -> error::Result<Option<Vec<u8>>> {
+    pub fn get(&self, key: &[u8]) -> error::Result<Option<Vec<u8>>> {
         let data = unsafe { self.map.as_slice() };
         let hash_table = &data[self.header.header_size as usize..self.header.data_end as usize];
 
