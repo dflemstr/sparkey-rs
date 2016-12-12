@@ -73,9 +73,9 @@ struct BlockChunks<'a> {
 }
 
 #[derive(Debug)]
-pub enum Entry<'a> {
-    Put(borrow::Cow<'a, [u8]>, borrow::Cow<'a, [u8]>),
-    Delete(borrow::Cow<'a, [u8]>),
+pub enum Entry<A> {
+    Put(A, A),
+    Delete(A),
 }
 
 #[derive(Debug)]
@@ -83,6 +83,9 @@ pub struct Entries<'a> {
     chunks: BlockChunks<'a>,
     hash_reader: Option<&'a hash::Reader>,
 }
+
+#[derive(Debug)]
+pub struct OwnedEntries<'a>(Entries<'a>);
 
 impl CompressionType {
     fn read_block<'a>(&self,
@@ -268,8 +271,16 @@ impl Reader {
         Entries::new(self.block_chunks())
     }
 
+    pub fn owned_entries(&self) -> OwnedEntries {
+        OwnedEntries::new(self.entries())
+    }
+
     pub unsafe fn entries_at(&self, position: usize) -> Entries {
         Entries::new(BlockChunks::new(Blocks::new_at(self, position)))
+    }
+
+    pub unsafe fn owned_entries_at(&self, position: usize) -> OwnedEntries {
+        OwnedEntries::new(self.entries_at(position))
     }
 }
 
@@ -376,18 +387,29 @@ impl<'a> util::Chunks for BlockChunks<'a> {
     }
 }
 
-impl<'a> Entry<'a> {
-    pub fn key(&self) -> &borrow::Cow<[u8]> {
+impl<A> Entry<A> {
+    pub fn key(&self) -> &A {
         match *self {
             Entry::Put(ref k, _) => k,
             Entry::Delete(ref k) => k,
         }
     }
 
-    pub fn value(&self) -> &borrow::Cow<[u8]> {
+    pub fn value(&self) -> &A {
         match *self {
             Entry::Put(_, ref v) => v,
             Entry::Delete(_) => panic!("A delete entry has no value"),
+        }
+    }
+}
+
+impl<'a, A: ?Sized> Entry<borrow::Cow<'a, A>>
+    where A: ToOwned
+{
+    pub fn into_owned(self) -> Entry<A::Owned> {
+        match self {
+            Entry::Put(k, v) => Entry::Put(k.into_owned(), v.into_owned()),
+            Entry::Delete(k) => Entry::Delete(k.into_owned()),
         }
     }
 }
@@ -400,7 +422,9 @@ impl<'a> Entries<'a> {
         }
     }
 
-    pub fn try_next<'b>(&'b mut self) -> error::Result<Option<Entry<'b>>> {
+    pub fn try_next<'b>
+        (&'b mut self)
+         -> error::Result<Option<Entry<borrow::Cow<'b, [u8]>>>> {
         use util::Chunks;
 
         let (a, _) = util::read_vlq(&mut self.chunks)?;
@@ -445,7 +469,26 @@ impl<'a> Entries<'a> {
         Ok(())
     }
 
-    pub fn next<'b>(&'b mut self) -> Option<error::Result<Entry<'b>>> {
+    pub fn next<'b>(&'b mut self)
+                    -> Option<error::Result<Entry<borrow::Cow<'b, [u8]>>>> {
+        util::flip_option(self.try_next())
+    }
+}
+
+impl<'a> OwnedEntries<'a> {
+    fn new(entries: Entries<'a>) -> OwnedEntries<'a> {
+        OwnedEntries(entries)
+    }
+
+    pub fn try_next(&mut self) -> error::Result<Option<Entry<Vec<u8>>>> {
+        Ok(self.0.try_next()?.map(|e| e.into_owned()))
+    }
+}
+
+impl<'a> Iterator for OwnedEntries<'a> {
+    type Item = error::Result<Entry<Vec<u8>>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
         util::flip_option(self.try_next())
     }
 }
