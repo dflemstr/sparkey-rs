@@ -131,8 +131,9 @@ impl<'a> Skip for BlockChunks<'a> {
                     }
                 }
             };
-            size -= slice_len;
-            self.block_offset += slice_len;
+            let result_size = cmp::min(size, slice_len);
+            size -= result_size;
+            self.block_offset += result_size;
         }
         Ok(())
     }

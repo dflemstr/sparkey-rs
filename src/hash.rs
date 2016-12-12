@@ -267,7 +267,8 @@ impl Reader {
                 }
             }
 
-            if get_displacement(hash_capacity, slot, stored_hash) < displacement {
+            if get_displacement(hash_capacity, slot, stored_hash) <
+               displacement {
                 return Ok(None);
             }
 

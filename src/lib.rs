@@ -39,8 +39,7 @@ mod test {
 
         {
             let mut writer =
-                log::Writer::create(&log, log::CompressionType::None)
-                    .unwrap();
+                log::Writer::create(&log, log::CompressionType::None).unwrap();
             writer.put(&[1], &[2, 3, 4, 5]).unwrap();
             writer.put(&[6], &[7, 8, 9, 10]).unwrap();
         }
@@ -201,9 +200,9 @@ mod test {
         let csv_file = fs::File::open(csv).unwrap();
 
         {
-            let mut writer =
-                log::Writer::create(&actual_log, log::CompressionType::None)
-                    .unwrap();
+            let mut writer = log::Writer::create(&actual_log,
+                                                 log::CompressionType::None)
+                .unwrap();
 
             for line in io::BufReader::new(csv_file).lines() {
                 let line = line.unwrap();
@@ -260,7 +259,8 @@ mod test {
 
         {
             let mut writer =
-                log::Writer::create(&actual_log, log::CompressionType::Snappy(1024))
+                log::Writer::create(&actual_log,
+                                    log::CompressionType::Snappy(1024))
                     .unwrap();
 
             for line in io::BufReader::new(csv_file).lines() {
