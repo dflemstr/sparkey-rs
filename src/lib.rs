@@ -173,7 +173,7 @@ mod test {
 
             let actual_entry = entries.try_next().unwrap().unwrap();
             let actual_key = str::from_utf8(actual_entry.key()).unwrap();
-            let actual_value = str::from_utf8(actual_entry.value()).unwrap();
+            let actual_value = str::from_utf8(actual_entry.value().unwrap()).unwrap();
 
             assert_eq!(expected_key, actual_key);
             assert_eq!(expected_value, actual_value);
@@ -202,7 +202,7 @@ mod test {
 
             let actual_entry = entries.try_next().unwrap().unwrap();
             let actual_key = str::from_utf8(actual_entry.key()).unwrap();
-            let actual_value = str::from_utf8(actual_entry.value()).unwrap();
+            let actual_value = str::from_utf8(actual_entry.value().unwrap()).unwrap();
 
             assert_eq!(expected_key, actual_key);
             assert_eq!(expected_value, actual_value);
@@ -231,7 +231,7 @@ mod test {
 
             let actual_entry = entries.try_next().unwrap().unwrap();
             let actual_key = str::from_utf8(actual_entry.key()).unwrap();
-            let actual_value = str::from_utf8(actual_entry.value()).unwrap();
+            let actual_value = str::from_utf8(actual_entry.value().unwrap()).unwrap();
 
             assert_eq!(expected_key, actual_key);
             assert_eq!(expected_value, actual_value);
@@ -283,7 +283,7 @@ mod test {
                 let actual_value =
                     actual_reader.get(expected_entry.key()).unwrap().unwrap();
 
-                assert_eq!(&**expected_entry.value(), &*actual_value);
+                assert_eq!(&**expected_entry.value().unwrap(), &*actual_value);
             }
         }
 
@@ -292,7 +292,7 @@ mod test {
             let expected_value =
                 expected_reader.get(&actual_entry.key()).unwrap().unwrap();
 
-            assert_eq!(&*expected_value, &**actual_entry.value());
+            assert_eq!(&*expected_value, &**actual_entry.value().unwrap());
         }
     }
 
@@ -342,7 +342,7 @@ mod test {
                 let actual_value =
                     actual_reader.get(expected_entry.key()).unwrap().unwrap();
 
-                assert_eq!(&**expected_entry.value(), &*actual_value);
+                assert_eq!(&**expected_entry.value().unwrap(), &*actual_value);
             }
         }
 
@@ -351,7 +351,7 @@ mod test {
             let expected_value =
                 expected_reader.get(&actual_entry.key()).unwrap().unwrap();
 
-            assert_eq!(&*expected_value, &**actual_entry.value());
+            assert_eq!(&*expected_value, &**actual_entry.value().unwrap());
         }
     }
 }

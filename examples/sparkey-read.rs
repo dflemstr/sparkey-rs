@@ -17,6 +17,6 @@ fn main() {
     while let Some(entry) = entries.try_next().unwrap() {
         println!("{},{}",
                  str::from_utf8(entry.key()).unwrap(),
-                 str::from_utf8(entry.value()).unwrap());
+                 str::from_utf8(entry.value().unwrap()).unwrap());
     }
 }
