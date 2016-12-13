@@ -59,10 +59,9 @@ impl<'a> Blocks<'a> {
             let data = unsafe { self.reader.map.as_slice() };
             trace!("Loading new block at {}", position);
 
-            let mut cursor = io::Cursor::new(&data[position..]);
-            let block = read_block(&mut cursor)?;
+            let (block, size) = read_block(&data[position..])?;
 
-            self.next_position += cursor.position() as usize;
+            self.next_position += size;
 
             Ok(Some(Block {
                 position: position,
@@ -194,14 +193,14 @@ impl<'a, R> log::EntryReader<'a> for EntryReader<R>
     }
 }
 
-fn read_block<R>(mut read: R) -> io::Result<Vec<u8>>
-    where R: io::Read
-{
-    let compressed_size = util::read_vlq(&mut read)? as usize;
-    let mut decoder = snap::Decoder::new();
-    let mut compressed = vec![0; compressed_size];
-    read.read_exact(&mut compressed)?;
-    let decompressed = decoder.decompress_vec(&compressed)?;
+fn read_block(data: &[u8]) -> io::Result<(Vec<u8>, usize)> {
+    let mut cursor = io::Cursor::new(data);
+    let compressed_size = util::read_vlq(&mut cursor)? as usize;
+    let start = cursor.position() as usize;
 
-    Ok(decompressed)
+    let mut decoder = snap::Decoder::new();
+    let decompressed =
+        decoder.decompress_vec(&data[start..start + compressed_size])?;
+
+    Ok((decompressed, start + compressed_size))
 }

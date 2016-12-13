@@ -1,3 +1,4 @@
+use std::borrow;
 use std::fs;
 use std::io;
 use std::path;
@@ -207,7 +208,7 @@ impl Reader {
     }
 
     // TODO: this is very stop-gap for now
-    pub fn get(&self, key: &[u8]) -> error::Result<Option<Vec<u8>>> {
+    pub fn get(&self, key: &[u8]) -> error::Result<Option<borrow::Cow<[u8]>>> {
         let data = unsafe { self.map.as_slice() };
         let hash_table = &data[self.header.header_size as usize..self.header.data_end as usize];
 
@@ -262,7 +263,7 @@ impl Reader {
                     entries.try_next()? {
                     if stored_key == key {
                         trace!("Found value for {:?}", key);
-                        return Ok(Some(stored_value.to_vec()));
+                        return Ok(Some(stored_value));
                     }
                 }
             }

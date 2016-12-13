@@ -47,8 +47,8 @@ mod test {
 
         let reader = hash::Reader::open(&hash, &log).unwrap();
 
-        assert_eq!(Some(vec![2u8, 3, 4, 5]), reader.get(&[1]).unwrap());
-        assert_eq!(Some(vec![7u8, 8, 9, 10]), reader.get(&[6]).unwrap());
+        assert_eq!(&[2u8, 3, 4, 5], &*reader.get(&[1]).unwrap().unwrap());
+        assert_eq!(&[7u8, 8, 9, 10], &*reader.get(&[6]).unwrap().unwrap());
     }
 
     #[test]
@@ -69,8 +69,8 @@ mod test {
 
         let reader = hash::Reader::open(&hash, &log).unwrap();
 
-        assert_eq!(Some(vec![2u8, 3, 4, 5]), reader.get(&[1]).unwrap());
-        assert_eq!(Some(vec![7u8, 8, 9, 10]), reader.get(&[6]).unwrap());
+        assert_eq!(&[2u8, 3, 4, 5], &*reader.get(&[1]).unwrap().unwrap());
+        assert_eq!(&[7u8, 8, 9, 10], &*reader.get(&[6]).unwrap().unwrap());
     }
 
     #[test]
@@ -82,6 +82,32 @@ mod test {
         let dir = path::Path::new("testdata");
         let log = dir.join("small-snappy.spl");
         let hash = dir.join("small-snappy.spi");
+        let csv = dir.join("small.csv");
+        let csv_file = fs::File::open(csv).unwrap();
+
+        let reader = hash::Reader::open(&hash, &log).unwrap();
+
+        for line in io::BufReader::new(csv_file).lines() {
+            let line = line.unwrap();
+            let mut parts = line.splitn(2, ",");
+            let key = parts.next().unwrap();
+            let expected = parts.next().unwrap();
+            let actual_bytes = reader.get(&key.as_bytes()).unwrap().unwrap();
+            let actual = str::from_utf8(&actual_bytes).unwrap();
+
+            assert_eq!(expected, actual);
+        }
+    }
+
+    #[test]
+    fn read_small_snappy_bigblocks_hash() {
+        use std::io::BufRead;
+
+        let _ = env_logger::init();
+
+        let dir = path::Path::new("testdata");
+        let log = dir.join("small-snappy-bigblocks.spl");
+        let hash = dir.join("small-snappy-bigblocks.spi");
         let csv = dir.join("small.csv");
         let csv_file = fs::File::open(csv).unwrap();
 
@@ -133,6 +159,35 @@ mod test {
 
         let dir = path::Path::new("testdata");
         let log = dir.join("small-snappy.spl");
+        let csv = dir.join("small.csv");
+        let csv_file = fs::File::open(csv).unwrap();
+
+        let reader = log::Reader::open(&log).unwrap();
+        let mut entries = reader.entries();
+
+        for line in io::BufReader::new(csv_file).lines() {
+            let line = line.unwrap();
+            let mut parts = line.splitn(2, ",");
+            let expected_key = parts.next().unwrap();
+            let expected_value = parts.next().unwrap();
+
+            let actual_entry = entries.try_next().unwrap().unwrap();
+            let actual_key = str::from_utf8(actual_entry.key()).unwrap();
+            let actual_value = str::from_utf8(actual_entry.value()).unwrap();
+
+            assert_eq!(expected_key, actual_key);
+            assert_eq!(expected_value, actual_value);
+        }
+    }
+
+    #[test]
+    fn read_small_snappy_bigblocks_log() {
+        use std::io::BufRead;
+
+        let _ = env_logger::init();
+
+        let dir = path::Path::new("testdata");
+        let log = dir.join("small-snappy-bigblocks.spl");
         let csv = dir.join("small.csv");
         let csv_file = fs::File::open(csv).unwrap();
 
@@ -228,7 +283,7 @@ mod test {
                 let actual_value =
                     actual_reader.get(expected_entry.key()).unwrap().unwrap();
 
-                assert_eq!(expected_entry.value().to_vec(), actual_value);
+                assert_eq!(&**expected_entry.value(), &*actual_value);
             }
         }
 
@@ -237,7 +292,7 @@ mod test {
             let expected_value =
                 expected_reader.get(&actual_entry.key()).unwrap().unwrap();
 
-            assert_eq!(expected_value, actual_entry.value().to_vec());
+            assert_eq!(&*expected_value, &**actual_entry.value());
         }
     }
 
@@ -287,7 +342,7 @@ mod test {
                 let actual_value =
                     actual_reader.get(expected_entry.key()).unwrap().unwrap();
 
-                assert_eq!(expected_entry.value().to_vec(), actual_value);
+                assert_eq!(&**expected_entry.value(), &*actual_value);
             }
         }
 
@@ -296,7 +351,7 @@ mod test {
             let expected_value =
                 expected_reader.get(&actual_entry.key()).unwrap().unwrap();
 
-            assert_eq!(expected_value, actual_entry.value().to_vec());
+            assert_eq!(&*expected_value, &**actual_entry.value());
         }
     }
 }
