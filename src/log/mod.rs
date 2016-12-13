@@ -59,7 +59,7 @@ pub enum Entry<A> {
     Delete(A),
 }
 
-trait EntryReader<'a>: fmt::Debug {
+trait EntryReader<'a>: fmt::Debug + Send {
     fn next(&mut self) -> error::Result<Option<Entry<borrow::Cow<'a, [u8]>>>>;
 
     fn skip_next(&mut self) -> error::Result<()>;

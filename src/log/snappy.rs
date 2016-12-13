@@ -153,7 +153,7 @@ impl<'a> EntryReader<BlockChunks<'a>> {
 }
 
 impl<'a, R> log::EntryReader<'a> for EntryReader<R>
-    where R: io::Read + fmt::Debug + Skip
+    where R: io::Read + fmt::Debug + Skip + Send
 {
     fn next(&mut self)
             -> error::Result<Option<log::Entry<borrow::Cow<'a, [u8]>>>> {
