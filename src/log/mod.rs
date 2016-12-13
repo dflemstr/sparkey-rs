@@ -265,10 +265,10 @@ impl<A> Entry<A> {
         }
     }
 
-    pub fn value(&self) -> &A {
+    pub fn value(&self) -> Option<&A> {
         match *self {
-            Entry::Put(_, ref v) => v,
-            Entry::Delete(_) => panic!("A delete entry has no value"),
+            Entry::Put(_, ref v) => Some(v),
+            Entry::Delete(_) => None,
         }
     }
 }
