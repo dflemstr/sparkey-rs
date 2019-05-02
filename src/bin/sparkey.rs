@@ -54,6 +54,14 @@ enum Command {
         #[structopt(long = "auto-index", short = "i")]
         auto_index: bool,
     },
+    /// Dumps all keys and values in the index to stdout
+    #[structopt(name = "dump")]
+    Dump {
+        #[structopt(flatten)]
+        key_format: KeyFormatOptions,
+        #[structopt(flatten)]
+        value_format: ValueFormatOptions,
+    },
     /// Creates a new (empty) log (.spl) file
     #[structopt(name = "create")]
     Create {
@@ -299,6 +307,23 @@ fn run() -> Result<(), failure::Error> {
                 )?;
             }
         }
+        Command::Dump {
+            key_format,
+            value_format,
+        } => {
+            let reader = sparkey::hash::Reader::open(index_file, log_file)?;
+            let key_format = key_format.to_format();
+            let value_format = value_format.to_format();
+
+            for entry in reader.entries()? {
+                let entry = entry?;
+                println!(
+                    "{}\t{}",
+                    encode(key_format, entry.key)?,
+                    encode(value_format, entry.value)?
+                );
+            }
+        }
         Command::Create {
             index,
             index_format,
@@ -419,7 +444,7 @@ impl KeyFormatOptions {
             Format::hex
         } else if self.base64 {
             Format::base64
-        } else  {
+        } else {
             self.format
         }
     }
@@ -431,7 +456,7 @@ impl ValueFormatOptions {
             Format::hex
         } else if self.base64 {
             Format::base64
-        } else  {
+        } else {
             self.format
         }
     }
