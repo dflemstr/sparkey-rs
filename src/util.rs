@@ -2,7 +2,6 @@ use std::ffi;
 use std::io;
 use std::os;
 use std::path;
-use std::result;
 
 use libc;
 use sparkey_sys::*;
@@ -76,12 +75,12 @@ pub fn handle(returncode: returncode) -> error::Result<()> {
     }
 }
 
-pub fn read_key(iter: *mut logiter, reader: *mut logreader) -> error::Result<Vec<u8>> {
+pub fn read_key(iter: *mut logiter, reader: *mut logreader) -> error::Result<bytes::BytesMut> {
     use std::convert::TryFrom;
 
     let expected_len = unsafe { logiter_keylen(iter) };
     let mut actual_len = 0;
-    let mut buf = Vec::with_capacity(usize::try_from(expected_len).unwrap());
+    let mut buf = bytes::BytesMut::with_capacity(usize::try_from(expected_len).unwrap());
 
     unsafe {
         handle(logiter_fill_key(
@@ -98,12 +97,12 @@ pub fn read_key(iter: *mut logiter, reader: *mut logreader) -> error::Result<Vec
     Ok(buf)
 }
 
-pub fn read_value(iter: *mut logiter, reader: *mut logreader) -> error::Result<Vec<u8>> {
+pub fn read_value(iter: *mut logiter, reader: *mut logreader) -> error::Result<bytes::BytesMut> {
     use std::convert::TryFrom;
 
     let expected_len = unsafe { logiter_valuelen(iter) };
     let mut actual_len = 0;
-    let mut buf = Vec::with_capacity(usize::try_from(expected_len).unwrap());
+    let mut buf = bytes::BytesMut::with_capacity(usize::try_from(expected_len).unwrap());
 
     unsafe {
         handle(logiter_fill_value(
@@ -118,12 +117,4 @@ pub fn read_value(iter: *mut logiter, reader: *mut logreader) -> error::Result<V
     }
 
     Ok(buf)
-}
-
-pub fn flip_option<A, E>(option: result::Result<Option<A>, E>) -> Option<result::Result<A, E>> {
-    match option {
-        Ok(None) => None,
-        Ok(Some(r)) => Some(Ok(r)),
-        Err(e) => Some(Err(e)),
-    }
 }

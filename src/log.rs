@@ -28,8 +28,8 @@ pub struct Writer(*mut logwriter);
 #[derive(Debug)]
 pub struct Entry {
     pub entry_type: EntryType,
-    pub key: Vec<u8>,
-    pub value: Vec<u8>,
+    pub key: bytes::BytesMut,
+    pub value: bytes::BytesMut,
 }
 
 pub struct Entries<'a>(*mut logiter, &'a Reader, Option<*mut hashreader>);
@@ -265,7 +265,7 @@ impl<'a> Iterator for Entries<'a> {
     type Item = error::Result<Entry>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        util::flip_option(self.try_next())
+        self.try_next().transpose()
     }
 }
 
@@ -295,7 +295,7 @@ impl<'a> Keys<'a> {
         util::handle(unsafe { logiter_skip(self.0, (self.1).0, count as os::raw::c_int) })
     }
 
-    fn try_next(&mut self) -> error::Result<Option<Vec<u8>>> {
+    fn try_next(&mut self) -> error::Result<Option<bytes::BytesMut>> {
         if let Some(hash) = self.2 {
             util::handle(unsafe { logiter_hashnext(self.0, hash) })?;
         } else {
@@ -314,10 +314,10 @@ impl<'a> Keys<'a> {
 }
 
 impl<'a> Iterator for Keys<'a> {
-    type Item = error::Result<Vec<u8>>;
+    type Item = error::Result<bytes::BytesMut>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        util::flip_option(self.try_next())
+        self.try_next().transpose()
     }
 }
 
@@ -347,7 +347,7 @@ impl<'a> Values<'a> {
         util::handle(unsafe { logiter_skip(self.0, (self.1).0, count as os::raw::c_int) })
     }
 
-    fn try_next(&mut self) -> error::Result<Option<Vec<u8>>> {
+    fn try_next(&mut self) -> error::Result<Option<bytes::BytesMut>> {
         if let Some(hash) = self.2 {
             util::handle(unsafe { logiter_hashnext(self.0, hash) })?;
         } else {
@@ -366,10 +366,10 @@ impl<'a> Values<'a> {
 }
 
 impl<'a> Iterator for Values<'a> {
-    type Item = error::Result<Vec<u8>>;
+    type Item = error::Result<bytes::BytesMut>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        util::flip_option(self.try_next())
+        self.try_next().transpose()
     }
 }
 

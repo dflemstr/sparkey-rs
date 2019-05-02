@@ -69,7 +69,7 @@ impl Reader {
         &self.1
     }
 
-    pub fn get(&self, key: &[u8]) -> error::Result<Option<Vec<u8>>> {
+    pub fn get(&self, key: &[u8]) -> error::Result<Option<bytes::BytesMut>> {
         let log_reader = self.log_reader().as_raw();
         let mut log_iter = ptr::null_mut();
 

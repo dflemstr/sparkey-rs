@@ -11,6 +11,7 @@ edition = "2018"
 [dependencies]
 failure = "0.1.5"
 libc = "0.2.53"
+bytes = "0.4.12"
 
 [dependencies.sparkey-sys]
 path = "sparkey-sys"

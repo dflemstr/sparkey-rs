@@ -34,8 +34,14 @@ mod test {
 
         let reader = hash::Reader::open(&hash, &log).unwrap();
 
-        assert_eq!(Some(vec![2, 3, 4, 5]), reader.get(&[1]).unwrap());
-        assert_eq!(Some(vec![7, 8, 9, 10]), reader.get(&[6]).unwrap());
+        assert_eq!(
+            Some(bytes::Bytes::from_static(&[2, 3, 4, 5])),
+            reader.get(&[1]).unwrap().map(|b| b.freeze())
+        );
+        assert_eq!(
+            Some(bytes::Bytes::from_static(&[7, 8, 9, 10])),
+            reader.get(&[6]).unwrap().map(|b| b.freeze())
+        );
     }
 
     #[test]
@@ -53,8 +59,14 @@ mod test {
 
         let reader = hash::Reader::open(&hash, &log).unwrap();
 
-        assert_eq!(Some(vec![2, 3, 4, 5]), reader.get(&[1]).unwrap());
-        assert_eq!(Some(vec![7, 8, 9, 10]), reader.get(&[6]).unwrap());
+        assert_eq!(
+            Some(bytes::Bytes::from_static(&[2, 3, 4, 5])),
+            reader.get(&[1]).unwrap().map(|b| b.freeze())
+        );
+        assert_eq!(
+            Some(bytes::Bytes::from_static(&[7, 8, 9, 10])),
+            reader.get(&[6]).unwrap().map(|b| b.freeze())
+        );
     }
 
     #[test]
