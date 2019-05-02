@@ -25,5 +25,9 @@ version = "0.1.0"
 [dev-dependencies]
 tempdir = "0.3.7"
 
+[profile.release]
+lto = true
+codegen-units = 1
+
 [workspace]
 members = ["sparkey-sys"]
