@@ -40,7 +40,7 @@ impl Writer {
             hash_write(
                 hash_path.as_ptr(),
                 log_path.as_ptr(),
-                hash_type.map(|t| t.as_raw()).unwrap_or(0),
+                hash_type.map_or(0, |t| t.as_raw()),
             )
         })?;
 
@@ -49,7 +49,7 @@ impl Writer {
 }
 
 impl Reader {
-    pub fn open<P1, P2>(hash_path: P1, log_path: P2) -> error::Result<Reader>
+    pub fn open<P1, P2>(hash_path: P1, log_path: P2) -> error::Result<Self>
     where
         P1: AsRef<path::Path>,
         P2: AsRef<path::Path>,
@@ -62,7 +62,7 @@ impl Reader {
 
         let log_reader = unsafe { log::Reader::from_raw(hash_getreader(raw)) };
 
-        Ok(Reader(raw, log_reader))
+        Ok(Self(raw, log_reader))
     }
 
     pub fn log_reader(&self) -> &log::Reader {

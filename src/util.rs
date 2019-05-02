@@ -37,7 +37,7 @@ pub fn handle(returncode: returncode) -> error::Result<()> {
     match returncode {
         SUCCESS => Ok(()),
 
-        INTERNAL_ERROR => Err(InternalError),
+        INTERNAL_ERROR => Err(Internal),
 
         FILE_NOT_FOUND => Err(raw(libc::ENOENT)),
         PERMISSION_DENIED => Err(raw(libc::EACCES)),
@@ -49,7 +49,7 @@ pub fn handle(returncode: returncode) -> error::Result<()> {
         FILE_SIZE_EXCEEDED => Err(raw(libc::EFBIG)),
         FILE_CLOSED => Err(raw(libc::EBADF)),
         OUT_OF_DISK => Err(raw(libc::ENOSPC)),
-        UNEXPECTED_EOF => Err(raw(libc::ENOENT)),
+        UNEXPECTED_EOF => Err(UnexpectedEof),
         MMAP_FAILED => Err(MmapFailed),
 
         WRONG_LOG_MAGIC_NUMBER => Err(WrongLogMagicNumber),
@@ -76,9 +76,11 @@ pub fn handle(returncode: returncode) -> error::Result<()> {
 }
 
 pub fn read_key(iter: *mut logiter, reader: *mut logreader) -> error::Result<Vec<u8>> {
+    use std::convert::TryFrom;
+
     let expected_len = unsafe { logiter_keylen(iter) };
     let mut actual_len = 0;
-    let mut buf = Vec::with_capacity(expected_len as usize);
+    let mut buf = Vec::with_capacity(usize::try_from(expected_len).unwrap());
 
     unsafe {
         handle(logiter_fill_key(
@@ -89,16 +91,18 @@ pub fn read_key(iter: *mut logiter, reader: *mut logreader) -> error::Result<Vec
             &mut actual_len,
         ))?;
         assert_eq!(expected_len, actual_len);
-        buf.set_len(actual_len as usize);
+        buf.set_len(usize::try_from(actual_len).unwrap());
     }
 
     Ok(buf)
 }
 
 pub fn read_value(iter: *mut logiter, reader: *mut logreader) -> error::Result<Vec<u8>> {
+    use std::convert::TryFrom;
+
     let expected_len = unsafe { logiter_valuelen(iter) };
     let mut actual_len = 0;
-    let mut buf = Vec::with_capacity(expected_len as usize);
+    let mut buf = Vec::with_capacity(usize::try_from(expected_len).unwrap());
 
     unsafe {
         handle(logiter_fill_value(
@@ -109,7 +113,7 @@ pub fn read_value(iter: *mut logiter, reader: *mut logreader) -> error::Result<V
             &mut actual_len,
         ))?;
         assert_eq!(expected_len, actual_len);
-        buf.set_len(actual_len as usize);
+        buf.set_len(usize::try_from(actual_len).unwrap());
     }
 
     Ok(buf)

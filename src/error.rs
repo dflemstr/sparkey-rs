@@ -14,7 +14,9 @@ pub enum Error {
     PathContainsNul { path: path::PathBuf, position: usize },
 
     #[fail(display = "internal error")]
-    InternalError,
+    Internal,
+    #[fail(display = "unexpected end-of-file")]
+    UnexpectedEof,
     #[fail(display = "failed to mmap()")]
     MmapFailed,
 

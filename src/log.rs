@@ -7,20 +7,25 @@ use sparkey_sys::*;
 use crate::error;
 use crate::util;
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum CompressionType {
     None,
     Snappy,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum EntryType {
     Put,
     Delete,
 }
 
-pub struct Writer(*mut logwriter);
-
+#[derive(Debug)]
 pub struct Reader(*mut logreader, bool);
 
+#[derive(Debug)]
+pub struct Writer(*mut logwriter);
+
+#[derive(Debug)]
 pub struct Entry {
     pub entry_type: EntryType,
     pub key: Vec<u8>,
@@ -34,15 +39,15 @@ pub struct Keys<'a>(*mut logiter, &'a Reader, Option<*mut hashreader>);
 pub struct Values<'a>(*mut logiter, &'a Reader, Option<*mut hashreader>);
 
 impl CompressionType {
-    pub fn from_raw(raw: compression_type) -> CompressionType {
+    pub fn from_raw(raw: compression_type) -> Self {
         match raw {
             compression_type::COMPRESSION_NONE => CompressionType::None,
             compression_type::COMPRESSION_SNAPPY => CompressionType::Snappy,
         }
     }
 
-    pub fn as_raw(&self) -> compression_type {
-        match *self {
+    pub fn as_raw(self) -> compression_type {
+        match self {
             CompressionType::None => compression_type::COMPRESSION_NONE,
             CompressionType::Snappy => compression_type::COMPRESSION_SNAPPY,
         }
@@ -50,15 +55,15 @@ impl CompressionType {
 }
 
 impl EntryType {
-    pub fn from_raw(raw: entry_type) -> EntryType {
+    pub fn from_raw(raw: entry_type) -> Self {
         match raw {
             entry_type::ENTRY_PUT => EntryType::Put,
             entry_type::ENTRY_DELETE => EntryType::Delete,
         }
     }
 
-    pub fn as_raw(&self) -> entry_type {
-        match *self {
+    pub fn as_raw(self) -> entry_type {
+        match self {
             EntryType::Put => entry_type::ENTRY_PUT,
             EntryType::Delete => entry_type::ENTRY_DELETE,
         }
@@ -66,11 +71,12 @@ impl EntryType {
 }
 
 impl Writer {
+    #[allow(clippy::cast_possible_wrap)]
     pub fn create<P>(
         path: P,
         compression_type: CompressionType,
         compression_block_size: u32,
-    ) -> error::Result<Writer>
+    ) -> error::Result<Self>
     where
         P: AsRef<path::Path>,
     {
@@ -86,10 +92,10 @@ impl Writer {
             )
         })?;
 
-        Ok(Writer(raw))
+        Ok(Self(raw))
     }
 
-    pub fn append<P>(path: P) -> error::Result<Writer>
+    pub fn append<P>(path: P) -> error::Result<Self>
     where
         P: AsRef<path::Path>,
     {
@@ -98,11 +104,11 @@ impl Writer {
 
         util::handle(unsafe { logwriter_append(&mut raw, path.as_ptr()) })?;
 
-        Ok(Writer(raw))
+        Ok(Self(raw))
     }
 
-    pub unsafe fn from_raw(raw: *mut logwriter) -> Writer {
-        Writer(raw)
+    pub unsafe fn from_raw(raw: *mut logwriter) -> Self {
+        Self(raw)
     }
 
     pub fn as_raw(&self) -> *mut logwriter {
@@ -139,7 +145,7 @@ impl Drop for Writer {
 unsafe impl Send for Writer {}
 
 impl Reader {
-    pub fn open<P>(path: P) -> error::Result<Reader>
+    pub fn open<P>(path: P) -> error::Result<Self>
     where
         P: AsRef<path::Path>,
     {
@@ -148,11 +154,11 @@ impl Reader {
 
         util::handle(unsafe { logreader_open(&mut raw, path.as_ptr()) })?;
 
-        Ok(Reader(raw, true))
+        Ok(Self(raw, true))
     }
 
-    pub unsafe fn from_raw(raw: *mut logreader) -> Reader {
-        Reader(raw, false)
+    pub unsafe fn from_raw(raw: *mut logreader) -> Self {
+        Self(raw, false)
     }
 
     pub fn as_raw(&self) -> *mut logreader {
@@ -167,6 +173,7 @@ impl Reader {
         unsafe { logreader_maxvaluelen(self.0) }
     }
 
+    #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
     pub fn compression_block_size(&self) -> u32 {
         unsafe { logreader_get_compression_blocksize(self.0) as u32 }
     }
@@ -225,6 +232,7 @@ impl<'a> Entries<'a> {
         self.0
     }
 
+    #[allow(clippy::cast_possible_wrap)]
     pub fn skip(&mut self, count: u32) -> error::Result<()> {
         util::handle(unsafe { logiter_skip(self.0, (self.1).0, count as os::raw::c_int) })
     }
@@ -243,9 +251,9 @@ impl<'a> Entries<'a> {
                 let value = util::read_value(self.0, (self.1).0)?;
 
                 Ok(Some(Entry {
-                    entry_type: entry_type,
-                    key: key,
-                    value: value,
+                    entry_type,
+                    key,
+                    value,
                 }))
             }
             _ => Ok(None),
@@ -282,6 +290,7 @@ impl<'a> Keys<'a> {
         self.0
     }
 
+    #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
     pub fn skip(&mut self, count: u32) -> error::Result<()> {
         util::handle(unsafe { logiter_skip(self.0, (self.1).0, count as os::raw::c_int) })
     }
@@ -333,6 +342,7 @@ impl<'a> Values<'a> {
         self.0
     }
 
+    #[allow(clippy::cast_possible_wrap)]
     pub fn skip(&mut self, count: u32) -> error::Result<()> {
         util::handle(unsafe { logiter_skip(self.0, (self.1).0, count as os::raw::c_int) })
     }
