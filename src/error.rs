@@ -4,7 +4,7 @@ use std::result;
 
 pub type Result<A> = result::Result<A, Error>;
 
-#[derive(Debug, Fail)]
+#[derive(Debug, failure::Fail)]
 pub enum Error {
     #[fail(display = "IO error")]
     IO(#[cause] io::Error),

@@ -1,3 +1,4 @@
+use std::fmt;
 use std::os;
 use std::path;
 use std::ptr;
@@ -257,6 +258,15 @@ impl<'a> Entries<'a> {
                 }))
             }
             _ => Ok(None),
+        }
+    }
+}
+
+impl fmt::Display for CompressionType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            CompressionType::None => f.write_str("none"),
+            CompressionType::Snappy => f.write_str("snappy"),
         }
     }
 }

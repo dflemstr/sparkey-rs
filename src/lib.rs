@@ -1,8 +1,3 @@
-#[macro_use]
-extern crate failure;
-extern crate libc;
-extern crate sparkey_sys;
-
 pub mod error;
 pub mod hash;
 pub mod log;
