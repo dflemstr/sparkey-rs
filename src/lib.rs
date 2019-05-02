@@ -1,13 +1,11 @@
-#![recursion_limit="65536"]
-
 #[macro_use]
-extern crate error_chain;
+extern crate failure;
 extern crate libc;
 extern crate sparkey_sys;
 
 pub mod error;
-pub mod log;
 pub mod hash;
+pub mod log;
 mod util;
 
 #[cfg(test)]
@@ -28,9 +26,7 @@ mod test {
         let hash = dir.path().join("data.spi");
 
         {
-            let mut writer =
-                log::Writer::create(&log, log::CompressionType::None, 0)
-                    .unwrap();
+            let mut writer = log::Writer::create(&log, log::CompressionType::None, 0).unwrap();
             writer.put(&[1], &[2, 3, 4, 5]).unwrap();
             writer.put(&[6], &[7, 8, 9, 10]).unwrap();
         }
@@ -49,9 +45,7 @@ mod test {
         let hash = dir.path().join("data.spi");
 
         {
-            let mut writer =
-                log::Writer::create(&log, log::CompressionType::Snappy, 1024)
-                    .unwrap();
+            let mut writer = log::Writer::create(&log, log::CompressionType::Snappy, 1024).unwrap();
             writer.put(&[1], &[2, 3, 4, 5]).unwrap();
             writer.put(&[6], &[7, 8, 9, 10]).unwrap();
         }
@@ -102,10 +96,8 @@ mod test {
         let csv_file = fs::File::open(csv).unwrap();
 
         {
-            let mut writer = log::Writer::create(&actual_log,
-                                                 log::CompressionType::Snappy,
-                                                 1024)
-                .unwrap();
+            let mut writer =
+                log::Writer::create(&actual_log, log::CompressionType::Snappy, 1024).unwrap();
 
             for line in io::BufReader::new(csv_file).lines() {
                 let line = line.unwrap();
@@ -119,16 +111,13 @@ mod test {
 
         hash::Writer::write(&actual_hash, &actual_log, None).unwrap();
 
-        let expected_reader = hash::Reader::open(&expected_hash, &expected_log)
-            .unwrap();
-        let actual_reader = hash::Reader::open(&actual_hash, &actual_log)
-            .unwrap();
+        let expected_reader = hash::Reader::open(&expected_hash, &expected_log).unwrap();
+        let actual_reader = hash::Reader::open(&actual_hash, &actual_log).unwrap();
 
         for expected_entry in expected_reader.entries().unwrap() {
             let expected_entry = expected_entry.unwrap();
 
-            let actual_value =
-                actual_reader.get(&expected_entry.key).unwrap().unwrap();
+            let actual_value = actual_reader.get(&expected_entry.key).unwrap().unwrap();
 
             assert_eq!(expected_entry.value, actual_value);
         }
@@ -136,8 +125,7 @@ mod test {
         for actual_entry in actual_reader.entries().unwrap() {
             let actual_entry = actual_entry.unwrap();
 
-            let expected_value =
-                expected_reader.get(&actual_entry.key).unwrap().unwrap();
+            let expected_value = expected_reader.get(&actual_entry.key).unwrap().unwrap();
 
             assert_eq!(expected_value, actual_entry.value);
         }

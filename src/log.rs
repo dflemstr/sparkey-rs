@@ -1,5 +1,5 @@
-use std::path;
 use std::os;
+use std::path;
 use std::ptr;
 
 use sparkey_sys::*;
@@ -66,27 +66,32 @@ impl EntryType {
 }
 
 impl Writer {
-    pub fn create<P>(path: P,
-                     compression_type: CompressionType,
-                     compression_block_size: u32)
-                     -> error::Result<Writer>
-        where P: AsRef<path::Path>
+    pub fn create<P>(
+        path: P,
+        compression_type: CompressionType,
+        compression_block_size: u32,
+    ) -> error::Result<Writer>
+    where
+        P: AsRef<path::Path>,
     {
         let mut raw = ptr::null_mut();
         let path = util::path_to_cstring(path)?;
 
         util::handle(unsafe {
-            logwriter_create(&mut raw,
-                             path.as_ptr(),
-                             compression_type.as_raw(),
-                             compression_block_size as os::raw::c_int)
+            logwriter_create(
+                &mut raw,
+                path.as_ptr(),
+                compression_type.as_raw(),
+                compression_block_size as os::raw::c_int,
+            )
         })?;
 
         Ok(Writer(raw))
     }
 
     pub fn append<P>(path: P) -> error::Result<Writer>
-        where P: AsRef<path::Path>
+    where
+        P: AsRef<path::Path>,
     {
         let mut raw = ptr::null_mut();
         let path = util::path_to_cstring(path)?;
@@ -106,24 +111,22 @@ impl Writer {
 
     pub fn put(&mut self, key: &[u8], value: &[u8]) -> error::Result<()> {
         util::handle(unsafe {
-            logwriter_put(self.0,
-                          key.len() as u64,
-                          key.as_ptr(),
-                          value.len() as u64,
-                          value.as_ptr())
+            logwriter_put(
+                self.0,
+                key.len() as u64,
+                key.as_ptr(),
+                value.len() as u64,
+                value.as_ptr(),
+            )
         })
     }
 
     pub fn delete(&mut self, key: &[u8]) -> error::Result<()> {
-        util::handle(unsafe {
-            logwriter_delete(self.0, key.len() as u64, key.as_ptr())
-        })
+        util::handle(unsafe { logwriter_delete(self.0, key.len() as u64, key.as_ptr()) })
     }
 
     pub fn flush(&mut self) -> error::Result<()> {
-        util::handle(unsafe {
-            logwriter_flush(self.0)
-        })
+        util::handle(unsafe { logwriter_flush(self.0) })
     }
 }
 
@@ -137,7 +140,8 @@ unsafe impl Send for Writer {}
 
 impl Reader {
     pub fn open<P>(path: P) -> error::Result<Reader>
-        where P: AsRef<path::Path>
+    where
+        P: AsRef<path::Path>,
     {
         let mut raw = ptr::null_mut();
         let path = util::path_to_cstring(path)?;
@@ -168,9 +172,7 @@ impl Reader {
     }
 
     pub fn compression_type(&self) -> CompressionType {
-        unsafe {
-            CompressionType::from_raw(logreader_get_compression_type(self.0))
-        }
+        unsafe { CompressionType::from_raw(logreader_get_compression_type(self.0)) }
     }
 
     pub fn entries(&self) -> error::Result<Entries> {
@@ -211,10 +213,11 @@ unsafe impl Send for Reader {}
 unsafe impl Sync for Reader {}
 
 impl<'a> Entries<'a> {
-    pub unsafe fn from_raw(raw: *mut logiter,
-                           reader: &'a Reader,
-                           hash: Option<*mut hashreader>)
-                           -> Entries<'a> {
+    pub unsafe fn from_raw(
+        raw: *mut logiter,
+        reader: &'a Reader,
+        hash: Option<*mut hashreader>,
+    ) -> Entries<'a> {
         Entries(raw, reader, hash)
     }
 
@@ -223,9 +226,7 @@ impl<'a> Entries<'a> {
     }
 
     pub fn skip(&mut self, count: u32) -> error::Result<()> {
-        util::handle(unsafe {
-            logiter_skip(self.0, (self.1).0, count as os::raw::c_int)
-        })
+        util::handle(unsafe { logiter_skip(self.0, (self.1).0, count as os::raw::c_int) })
     }
 
     fn try_next(&mut self) -> error::Result<Option<Entry>> {
@@ -237,8 +238,7 @@ impl<'a> Entries<'a> {
 
         match unsafe { logiter_state(self.0) } {
             iter_state::ITER_ACTIVE => {
-                let entry_type =
-                    EntryType::from_raw(unsafe { logiter_type(self.0) });
+                let entry_type = EntryType::from_raw(unsafe { logiter_type(self.0) });
                 let key = util::read_key(self.0, (self.1).0)?;
                 let value = util::read_value(self.0, (self.1).0)?;
 
@@ -270,10 +270,11 @@ impl<'a> Drop for Entries<'a> {
 unsafe impl<'a> Send for Entries<'a> {}
 
 impl<'a> Keys<'a> {
-    pub unsafe fn from_raw(raw: *mut logiter,
-                           reader: &'a Reader,
-                           hash: Option<*mut hashreader>)
-                           -> Keys<'a> {
+    pub unsafe fn from_raw(
+        raw: *mut logiter,
+        reader: &'a Reader,
+        hash: Option<*mut hashreader>,
+    ) -> Keys<'a> {
         Keys(raw, reader, hash)
     }
 
@@ -282,9 +283,7 @@ impl<'a> Keys<'a> {
     }
 
     pub fn skip(&mut self, count: u32) -> error::Result<()> {
-        util::handle(unsafe {
-            logiter_skip(self.0, (self.1).0, count as os::raw::c_int)
-        })
+        util::handle(unsafe { logiter_skip(self.0, (self.1).0, count as os::raw::c_int) })
     }
 
     fn try_next(&mut self) -> error::Result<Option<Vec<u8>>> {
@@ -322,10 +321,11 @@ impl<'a> Drop for Keys<'a> {
 unsafe impl<'a> Send for Keys<'a> {}
 
 impl<'a> Values<'a> {
-    pub unsafe fn from_raw(raw: *mut logiter,
-                           reader: &'a Reader,
-                           hash: Option<*mut hashreader>)
-                           -> Values<'a> {
+    pub unsafe fn from_raw(
+        raw: *mut logiter,
+        reader: &'a Reader,
+        hash: Option<*mut hashreader>,
+    ) -> Values<'a> {
         Values(raw, reader, hash)
     }
 
@@ -334,9 +334,7 @@ impl<'a> Values<'a> {
     }
 
     pub fn skip(&mut self, count: u32) -> error::Result<()> {
-        util::handle(unsafe {
-            logiter_skip(self.0, (self.1).0, count as os::raw::c_int)
-        })
+        util::handle(unsafe { logiter_skip(self.0, (self.1).0, count as os::raw::c_int) })
     }
 
     fn try_next(&mut self) -> error::Result<Option<Vec<u8>>> {

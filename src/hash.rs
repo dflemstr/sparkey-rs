@@ -28,20 +28,20 @@ impl Type {
 }
 
 impl Writer {
-    pub fn write<P1, P2>(hash_path: P1,
-                         log_path: P2,
-                         hash_type: Option<Type>)
-                         -> error::Result<()>
-        where P1: AsRef<path::Path>,
-              P2: AsRef<path::Path>
+    pub fn write<P1, P2>(hash_path: P1, log_path: P2, hash_type: Option<Type>) -> error::Result<()>
+    where
+        P1: AsRef<path::Path>,
+        P2: AsRef<path::Path>,
     {
         let hash_path = util::path_to_cstring(hash_path)?;
         let log_path = util::path_to_cstring(log_path)?;
 
         util::handle(unsafe {
-            hash_write(hash_path.as_ptr(),
-                       log_path.as_ptr(),
-                       hash_type.map(|t| t.as_raw()).unwrap_or(0))
+            hash_write(
+                hash_path.as_ptr(),
+                log_path.as_ptr(),
+                hash_type.map(|t| t.as_raw()).unwrap_or(0),
+            )
         })?;
 
         Ok(())
@@ -49,19 +49,16 @@ impl Writer {
 }
 
 impl Reader {
-    pub fn open<P1, P2>(hash_path: P1,
-                        log_path: P2)
-                        -> error::Result<Reader>
-        where P1: AsRef<path::Path>,
-              P2: AsRef<path::Path>
+    pub fn open<P1, P2>(hash_path: P1, log_path: P2) -> error::Result<Reader>
+    where
+        P1: AsRef<path::Path>,
+        P2: AsRef<path::Path>,
     {
         let mut raw = ptr::null_mut();
         let hash_path = util::path_to_cstring(hash_path)?;
         let log_path = util::path_to_cstring(log_path)?;
 
-        util::handle(unsafe {
-            hash_open(&mut raw, hash_path.as_ptr(), log_path.as_ptr())
-        })?;
+        util::handle(unsafe { hash_open(&mut raw, hash_path.as_ptr(), log_path.as_ptr()) })?;
 
         let log_reader = unsafe { log::Reader::from_raw(hash_getreader(raw)) };
 
@@ -78,9 +75,7 @@ impl Reader {
 
         util::handle(unsafe { logiter_create(&mut log_iter, log_reader) })?;
 
-        util::handle(unsafe {
-            hash_get(self.0, key.as_ptr(), key.len() as u64, log_iter)
-        })?;
+        util::handle(unsafe { hash_get(self.0, key.as_ptr(), key.len() as u64, log_iter) })?;
 
         let result = match unsafe { logiter_state(log_iter) } {
             iter_state::ITER_ACTIVE => {
@@ -90,9 +85,7 @@ impl Reader {
             _ => None,
         };
 
-        unsafe {
-            logiter_close(&mut log_iter)
-        };
+        unsafe { logiter_close(&mut log_iter) };
 
         Ok(result)
     }
