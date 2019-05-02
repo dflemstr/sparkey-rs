@@ -4,9 +4,9 @@ use std::ptr;
 
 use sparkey_sys::*;
 
-use error;
-use log;
-use util;
+use crate::error;
+use crate::log;
+use crate::util;
 
 #[allow(non_camel_case_types)]
 pub enum Type {

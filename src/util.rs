@@ -7,7 +7,7 @@ use std::result;
 use libc;
 use sparkey_sys::*;
 
-use error;
+use crate::error;
 
 pub fn path_to_cstring<P>(path: P) -> error::Result<ffi::CString>
 where
@@ -27,7 +27,7 @@ where
 }
 
 pub fn handle(returncode: returncode) -> error::Result<()> {
-    use error::Error::*;
+    use crate::error::Error::*;
     use sparkey_sys::returncode::*;
 
     fn raw(raw: os::raw::c_int) -> error::Error {

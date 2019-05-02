@@ -4,8 +4,8 @@ use std::ptr;
 
 use sparkey_sys::*;
 
-use error;
-use util;
+use crate::error;
+use crate::util;
 
 pub enum CompressionType {
     None,
