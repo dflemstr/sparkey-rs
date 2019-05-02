@@ -40,6 +40,7 @@ Related projects
 * [emnl/gnista: Unofficial ruby bindings](https://github.com/emnl/gnista)
 * [adamtanner/sparkey: Unofficial ruby bindings](https://github.com/adamtanner/sparkey)
 * [stephenmathieson/node-sparkey: Unofficial node bindings](https://github.com/stephenmathieson/node-sparkey)
+* [tiegz/sparkey-go: Unofficial go bindings](https://github.com/tiegz/sparkey-go)
 
 Description
 ------------
@@ -73,6 +74,14 @@ The usecase we have for it at Spotify is serving data that rarely gets updated t
 users or other services. The fast and efficient bulk writes makes it feasible to periodically rebuild the data,
 and the fast random access reads makes it suitable for high throughput low latency services.
 For some services we have been able to saturate network interfaces while keeping cpu usage really low.
+
+Limitations
+-----------
+The hash writing process requires memory allocation of num_entries * 16 * 1.3 bytes.
+This means that you may run out of memory if trying to write a hash index for too many entries.
+For instance, with 16 GB available RAM you may write 825 million entries.
+
+This limitation has been removed in sparkey-java, but it has not yet been implemented in this version.
 
 Usage
 -----
