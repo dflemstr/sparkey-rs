@@ -10,8 +10,14 @@ pub enum Error {
     IO(#[cause] io::Error),
     #[fail(display = "path not UTF-8: {:?}", path)]
     PathNotUTF8 { path: path::PathBuf },
-    #[fail(display = "path contains null byte at position {}: {:?}", position, path)]
-    PathContainsNul { path: path::PathBuf, position: usize },
+    #[fail(
+        display = "path contains null byte at position {}: {:?}",
+        position, path
+    )]
+    PathContainsNul {
+        path: path::PathBuf,
+        position: usize,
+    },
 
     #[fail(display = "internal error")]
     Internal,

@@ -14,15 +14,16 @@ where
     P: AsRef<path::Path>,
 {
     let path = path.as_ref();
-    let path_str = path
-        .to_str()
-        .ok_or(error::Error::PathNotUTF8 { path: path.to_path_buf() })?;
+    let path_str = path.to_str().ok_or(error::Error::PathNotUTF8 {
+        path: path.to_path_buf(),
+    })?;
 
     match ffi::CString::new(path_str) {
         Ok(s) => Ok(s),
-        Err(e) => {
-            Err(error::Error::PathContainsNul { path: path.to_path_buf(), position: e.nul_position() })
-        }
+        Err(e) => Err(error::Error::PathContainsNul {
+            path: path.to_path_buf(),
+            position: e.nul_position(),
+        }),
     }
 }
 
